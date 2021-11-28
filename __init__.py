@@ -1,6 +1,6 @@
 from uuid import UUID, uuid4
 import math
-from typing import List, Set
+from typing import List, Set, Optional
 from abc import ABC, abstractmethod
 from enum import Enum, auto
 
@@ -95,7 +95,7 @@ class World:
             entity.tick()
 
     def neighbors_of(
-        self, entity: Entity, types: Optional[Set[EntityType]]
+        self, entity: Entity, types: Optional[Set[EntityType]] = None
     ) -> Set[Entity]:
         neighbors = set()
         for potential_neighbor in self.entities:
