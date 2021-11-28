@@ -3,16 +3,6 @@ import math
 from typing import List, Set
 
 
-class Task:
-    def __init__(self, cpu_work: int, gpu_work: int) -> None:
-        self.cpu_work = cpu_work
-        self.gpu_work = gpu_work
-        self.id = uuid4()
-
-    def run(self) -> RunningTask:
-        return RunningTask(self.cpu_work, self.gpu_work, self.id)
-
-
 class RunningTask:
     def __init__(self, cpu_work: int, gpu_work: int, id: UUID) -> None:
         self.cpu_work = cpu_work
@@ -27,6 +17,16 @@ class RunningTask:
     def work(self, cpu_power: int, gpu_power: int) -> None:
         self.cpu_progress += cpu_power
         self.gpu_progress += gpu_power
+
+
+class Task:
+    def __init__(self, cpu_work: int, gpu_work: int) -> None:
+        self.cpu_work = cpu_work
+        self.gpu_work = gpu_work
+        self.id = uuid4()
+
+    def run(self) -> RunningTask:
+        return RunningTask(self.cpu_work, self.gpu_work, self.id)
 
 
 class Entity:
