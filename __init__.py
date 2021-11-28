@@ -64,6 +64,9 @@ class Node(Entity):
             max(task.cpu_work / self.cpu_power, task.gpu_work / self.gpu_power)
         )
 
+    def spawn(self, task: Task) -> None:
+        self.tasks.append(task.run())
+
 
 def main() -> None:
     pass
