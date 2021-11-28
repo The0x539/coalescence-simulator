@@ -43,7 +43,7 @@ class Entity(ABC):
         self.range = range
 
     @abstractmethod
-    def tick(self) -> None:
+    def tick(self, world: World) -> None:
         ...
 
     @abstractmethod
@@ -61,7 +61,7 @@ class Node(Entity):
         self.tasks: List[RunningTask] = []
         self.results: Set[UUID] = set()
 
-    def tick(self) -> None:
+    def tick(self, world: World) -> None:
         try:
             cur_task = self.tasks[0]
         except IndexError:
@@ -90,9 +90,9 @@ class World:
     def __init__(self) -> None:
         self.entities: List[Entity] = []
 
-    def tick(self) -> None:
+    def tick(self, world: World) -> None:
         for entity in self.entities:
-            entity.tick()
+            entity.tick(self)
 
     def neighbors_of(
         self, entity: Entity, types: Optional[Set[EntityType]] = None
