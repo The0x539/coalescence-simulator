@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 import math
 from typing import List, Set
+from abc import ABC, abstractmethod
 
 
 class RunningTask:
@@ -29,14 +30,15 @@ class Task:
         return RunningTask(self.cpu_work, self.gpu_work, self.id)
 
 
-class Entity:
+class Entity(ABC):
     def __init__(self, x: int, y: int, range: float) -> None:
         self.x = x
         self.y = y
         self.range = range
 
+    @abstractmethod
     def tick(self) -> None:
-        pass
+        ...
 
 
 class Node(Entity):
@@ -92,7 +94,7 @@ class World:
 
 
 def main() -> None:
-    pass
+    x = Node(0, 0, 1, 1, 5.0)
 
 
 if __name__ == "__main__":
