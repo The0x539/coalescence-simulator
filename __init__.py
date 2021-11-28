@@ -2,6 +2,12 @@ from uuid import UUID, uuid4
 import math
 from typing import List, Set
 from abc import ABC, abstractmethod
+from enum import Enum, auto
+
+
+class EntityType(Enum):
+    NODE = auto()
+    # DEVICE = auto()
 
 
 class RunningTask:
@@ -40,6 +46,10 @@ class Entity(ABC):
     def tick(self) -> None:
         ...
 
+    @abstractmethod
+    def entity_type(self) -> EntityType:
+        ...
+
 
 class Node(Entity):
     def __init__(
@@ -72,6 +82,9 @@ class Node(Entity):
     def spawn(self, task: Task) -> None:
         self.tasks.append(task.run())
 
+    def entity_type(self) -> EntityType:
+        return EntityType.NODE
+
 
 class World:
     def __init__(self) -> None:
@@ -81,14 +94,24 @@ class World:
         for entity in self.entities:
             entity.tick()
 
-    def neighbors_of(self, entity: Entity) -> Set[Entity]:
+    def neighbors_of(
+        self, entity: Entity, types: Optional[Set[EntityType]]
+    ) -> Set[Entity]:
         neighbors = set()
         for potential_neighbor in self.entities:
+            if potential_neighbor is entity:
+                continue
+
+            if types is not None and entity.entity_type() not in types:
+                continue
+
             dx = entity.x - potential_neighbor.x
             dy = entity.y - potential_neighbor.y
             distance = math.sqrt(dx * dx + dy * dy)
-            if distance <= min(entity.range, potential_neighbor.range):
-                neighbors.add(potential_neighbor)
+            if distance > min(entity.range, potential_neighbor.range):
+                continue
+
+            neighbors.add(potential_neighbor)
 
         return neighbors
 
