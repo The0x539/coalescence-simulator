@@ -30,17 +30,20 @@ class RunningTask:
 
 
 class Entity:
-    def __init__(self, x: int, y: int) -> None:
+    def __init__(self, x: int, y: int, range: float) -> None:
         self.x = x
         self.y = y
+        self.range = range
 
     def tick(self) -> None:
         pass
 
 
 class Node(Entity):
-    def __init__(self, x: int, y: int, cpu_power: int, gpu_power: int) -> None:
-        super().__init__(x, y)
+    def __init__(
+        self, x: int, y: int, cpu_power: int, gpu_power: int, range: float
+    ) -> None:
+        super().__init__(x, y, range)
         self.cpu_power = cpu_power
         self.gpu_power = gpu_power
         self.tasks: List[RunningTask] = []
@@ -66,6 +69,26 @@ class Node(Entity):
 
     def spawn(self, task: Task) -> None:
         self.tasks.append(task.run())
+
+
+class World:
+    def __init__(self) -> None:
+        self.entities: List[Entity] = []
+
+    def tick(self) -> None:
+        for entity in self.entities:
+            entity.tick()
+
+    def neighbors_of(self, entity: Entity) -> Set[Entity]:
+        neighbors = set()
+        for potential_neighbor in self.entities:
+            dx = entity.x - potential_neighbor.x
+            dy = entity.y - potential_neighbor.y
+            distance = math.sqrt(dx * dx + dy * dy)
+            if distance <= min(entity.range, potential_neighbor.range):
+                neighbors.add(potential_neighbor)
+
+        return neighbors
 
 
 def main() -> None:
