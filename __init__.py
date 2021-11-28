@@ -7,7 +7,7 @@ from enum import Enum, auto
 
 class EntityType(Enum):
     NODE = auto()
-    # DEVICE = auto()
+    DEVICE = auto()
 
 
 class RunningTask:
@@ -84,6 +84,24 @@ class Node(Entity):
 
     def entity_type(self) -> EntityType:
         return EntityType.NODE
+
+
+class Device(Entity):
+    def __init__(self, x: int, y: int, range: float) -> None:
+        super().__init__(x, y, range)
+        self.tasks: List[Task] = []
+
+    def tick(self, world: World) -> None:
+        for neighbor in world.neighbors_of(self, {EntityType.NODE}):
+            # check how good of an idea it is to run the task on the node
+            # run it if it's a good idea
+            # check in on nodes that were/are running it
+
+    def entity_type(self) -> EntityType:
+        return EntityType.DEVICE
+
+    def request_task(self, cpu_work: int, gpu_work: int) -> None:
+        self.tasks.append(Task(cpu_work, gpu_work))
 
 
 class World:
