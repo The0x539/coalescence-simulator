@@ -22,8 +22,8 @@ class RunningTask:
         return self.cpu_progress >= self.cpu_work and self.gpu_progress >= self.gpu_work
 
     def work(self, cpu_power: int, gpu_power: int) -> None:
-        self.cpu_progress += cpu_power
-        self.gpu_progress += gpu_power
+        self.cpu_progress = min(self.cpu_progress + cpu_power, self.cpu_work)
+        self.gpu_progress = min(self.gpu_progress + gpu_power, self.gpu_work)
 
     def remaining_time(self, cpu_power: int, gpu_power: int) -> int:
         remaining_cpu_work = self.cpu_work - self.cpu_progress
