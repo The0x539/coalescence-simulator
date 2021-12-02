@@ -3,6 +3,8 @@ import math
 from typing import List, Set, Optional, Tuple, Dict, TypeVar, Type, cast
 from abc import ABC, abstractmethod
 from enum import Enum, auto
+import random
+import matplotlib.pyplot as plt
 
 
 T = TypeVar("T")
@@ -130,7 +132,7 @@ class Node(Entity):
 
 class Device(Entity):
     def __init__(
-        self, x: int, y: int, range: float, personal_node: Optional[Node]
+        self, x: int, y: int, range: float, personal_node: Optional[Node] = None
     ) -> None:
         super().__init__(x, y, range)
         self.tasks: Dict[UUID, Task] = {}
@@ -231,9 +233,48 @@ class World:
 
         return neighbors
 
+    def show(self) -> None:
+        fig, ax = plt.subplots()
+        rc = lambda: f"{random.randrange(0, 255):02x}"
+
+        for entity in self.entities:
+            linestyle = "--" if isinstance(entity, Device) else ":"
+
+            color = f"#{rc()}{rc()}{rc()}"
+            circle = plt.Circle(
+                (entity.x, entity.y),
+                entity.range,
+                fill=False,
+                color=color,
+                linestyle=linestyle,
+            )
+            ax.add_patch(circle)
+            ax.scatter(entity.x, entity.y, c=color)
+
+        plt.show()
+
 
 def main() -> None:
-    x = Node(0, 0, 1, 1, 5.0)
+    w = World()
+    for _ in range(10):
+        n = Node(
+            random.randrange(-50, 50),
+            random.randrange(-50, 50),
+            random.randrange(1, 10),
+            random.randrange(0, 5),
+            random.uniform(1.0, 15.0),
+        )
+        w.add_entity(n)
+
+    for _ in range(5):
+        d = Device(
+            random.randrange(-50, 50),
+            random.randrange(-50, 50),
+            random.uniform(10.0, 25.0),
+        )
+        w.add_entity(d)
+
+    w.show()
 
 
 if __name__ == "__main__":
