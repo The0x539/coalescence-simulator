@@ -23,6 +23,16 @@ class RunningTask:
         self.cpu_progress += cpu_power
         self.gpu_progress += gpu_power
 
+    def remaining_time(self, cpu_power: int, gpu_power: int) -> int:
+        remaining_cpu_work = self.cpu_work - self.cpu_progress
+        remaining_gpu_work = self.gpu_work - self.gpu_progress
+        return (
+            math.ceil(
+                max(remaining_cpu_work / cpu_power, remaining_gpu_work / gpu_power)
+            )
+            + 1
+        )
+
 
 class Task:
     def __init__(self, cpu_work: int, gpu_work: int) -> None:
@@ -69,6 +79,9 @@ class Node(Entity):
         except IndexError:
             return
 
+        if self.time_left > 0:
+            self.time_left -= 1
+
         if cur_task.is_complete():
             # yeah sure, popping takes a tick. whatever.
             self.results[cur_task.id] = Result(cur_task.id)
@@ -78,15 +91,28 @@ class Node(Entity):
 
     def estimate_time(self, task: Task) -> int:
         # returns the amount of time before the node would complete the task
-        return self.time_left + math.ceil(
+        task_time = math.ceil(
             max(task.cpu_work / self.cpu_power, task.gpu_work / self.gpu_power)
         )
+        return self.time_left + task_time + 1  # 1 extra tick for the "pop"
 
     def spawn(self, task: Task) -> None:
         self.tasks.append(task.run())
-        self.time_left += math.ceil(
-            max(task.cpu_work / self.cpu_power, task.gpu_work / self.gpu_power)
-        )
+        self.time_left = self.estimate_time(task)
+        task.runners[self.id] = self.time_left
+
+    def cancel(self, task: Task) -> None:
+        for (i, r_t) in enumerate(self.tasks):
+            if r_t.id == task.id:
+                index = i
+                running_task = r_t
+                break
+        else:
+            # ok dude, I wasn't running it anyway
+            return
+
+        self.time_left -= running_task.remaining_time(self.cpu_power, self.gpu_power)
+        del self.tasks[index]
 
     def get_results(self, id: UUID) -> Optional[Result]:
         if id not in self.results:
@@ -98,9 +124,12 @@ class Node(Entity):
 
 
 class Device(Entity):
-    def __init__(self, x: int, y: int, range: float) -> None:
+    def __init__(
+        self, x: int, y: int, range: float, personal_node: Optional[Node]
+    ) -> None:
         super().__init__(x, y, range)
         self.tasks: Dict[UUID, Task] = {}
+        self.personal_node = personal_node
 
     def tick(self, world: World) -> None:
 
@@ -135,16 +164,24 @@ class Device(Entity):
 
             if got_result:
                 del self.tasks[task.id]
+                if self.personal_node is not None:
+                    # ideally we could tell neighbors to also cancel it but whatever
+                    self.personal_node.cancel(task)
             elif best_neighbor_for_task is not None:
                 best_neighbor_for_task.spawn(task)
 
     def request_task(self, cpu_work: int, gpu_work: int) -> None:
         task = Task(cpu_work, gpu_work)
         self.tasks[task.id] = task
+        if self.personal_node is not None:
+            self.personal_node.spawn(task)
 
     def move(self, dx: int, dy: int) -> None:
         self.x += dx
         self.y += dy
+        if self.personal_node is not None:
+            self.personal_node.x += dx
+            self.personal_node.y += dy
 
 
 class World:
