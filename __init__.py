@@ -29,7 +29,7 @@ class Task:
         self.cpu_work = cpu_work
         self.gpu_work = gpu_work
         self.id = uuid4()
-        self.ticks_left: Optional[int] = None
+        self.runners: Dict[UUID, int] = {}
 
     def run(self) -> RunningTask:
         return RunningTask(self.cpu_work, self.gpu_work, self.id)
@@ -61,6 +61,7 @@ class Node(Entity):
         self.tasks: List[RunningTask] = []
         self.results: Dict[UUID, Result] = {}
         self.time_left = 0
+        self.id = uuid4()
 
     def tick(self, world: World) -> None:
         try:
@@ -102,31 +103,40 @@ class Device(Entity):
         self.tasks: Dict[UUID, Task] = {}
 
     def tick(self, world: World) -> None:
+
+        nearby_nodes = world.neighbors_of(self, Node)
+
         # A tick for a device is one iteration over its tasks (it does more than one tick of work in the tick, we can change it later if we want)
         for task in self.tasks.values():
-            if task.ticks_left is None:
-                # task is not running anywhere
-                # tries to find a place for it to run
-                best_time = None
-                for neighbor in world.neighbors_of(self, Node):
-                    time = neighbor.estimate_time(task)
-                    if best_time is None or time < best_time:
-                        best_time = time
-                        best_node = neighbor
+            got_result = False
+            cur_min_eta = min(task.runners.values())
 
-                if best_time is not None:
-                    best_node.spawn(task)
-                    task.ticks_left = best_time
+            for node_id in task.runners.keys():
+                if task.runners[node_id] > 0:
+                    task.runners[node_id] -= 1
 
-            elif task.ticks_left == 0:
-                # get the computation results
-                res = best_node.get_results(task.id)
-                assert res is not None, "node should have been done, but wasn't"
-                assert res.id == task.id, "task ID mismatch"
+            best_neighbor_for_task = None
+            for node in nearby_nodes:
+                if node.id in task.runners:
+                    if task.runners[node.id] == 0:
+                        res = node.get_results(task.id)
+                        if res is None:
+                            # it should be ready, but it isn't yet. probably next cycle
+                            continue
+
+                        assert res.id == task.id, "task ID mismatch"
+                        got_result = True
+                        break
+                else:
+                    eta = node.estimate_time(task)
+                    if eta < cur_min_eta:
+                        cur_min_eta = eta
+                        best_neighbor_for_task = node
+
+            if got_result:
                 del self.tasks[task.id]
-
-            else:
-                task.ticks_left -= 1
+            elif best_neighbor_for_task is not None:
+                best_neighbor_for_task.spawn(task)
 
     def request_task(self, cpu_work: int, gpu_work: int) -> None:
         task = Task(cpu_work, gpu_work)
