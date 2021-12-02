@@ -142,6 +142,10 @@ class Device(Entity):
         task = Task(cpu_work, gpu_work)
         self.tasks[task.id] = task
 
+    def move(self, dx: int, dy: int) -> None:
+        self.x += dx
+        self.y += dy
+
 
 class World:
     def __init__(self) -> None:
