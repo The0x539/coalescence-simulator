@@ -4,11 +4,10 @@ from typing import List, Set, Optional, Tuple, Dict
 from abc import ABC, abstractmethod
 from enum import Enum, auto
 
+
 class EntityType(Enum):
     NODE = auto()
     DEVICE = auto()
-
-
 
 
 class RunningTask:
@@ -27,7 +26,6 @@ class RunningTask:
         self.gpu_progress += gpu_power
 
 
-
 class Task:
     def __init__(self, cpu_work: int, gpu_work: int) -> None:
         self.cpu_work = cpu_work
@@ -36,8 +34,6 @@ class Task:
 
     def run(self) -> RunningTask:
         return RunningTask(self.cpu_work, self.gpu_work, self.id)
-
-
 
 
 class Entity(ABC):
@@ -139,20 +135,17 @@ class Device(Entity):
                 indices_to_remove.append(i)
 
             else:
-                #reduce the time left
+                # reduce the time left
                 self.tasks[i] = (task, ticksLeft - 1)
 
         for i in indices_to_remove:
             del self.tasks[i]
-
 
     def entity_type(self) -> EntityType:
         return EntityType.DEVICE
 
     def request_task(self, cpu_work: int, gpu_work: int) -> None:
         self.tasks.append((Task(cpu_work, gpu_work), -1))
-
-
 
 
 class World:
@@ -186,8 +179,6 @@ class World:
             neighbors.add(potential_neighbor)
 
         return neighbors
-
-
 
 
 def main() -> None:
