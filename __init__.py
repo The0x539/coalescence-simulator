@@ -198,6 +198,9 @@ class World:
             entity.tick(self)
 
     def add_entity(self, entity: Entity) -> None:
+        for e in self.entities:
+            if e is entity:
+                raise ValueError("entity already in world!")
         self.entities.append(entity)
 
     def neighbors_of(
