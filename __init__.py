@@ -29,6 +29,7 @@ class Task:
         self.cpu_work = cpu_work
         self.gpu_work = gpu_work
         self.id = uuid4()
+        self.ticks_left: Optional[int] = None
 
     def run(self) -> RunningTask:
         return RunningTask(self.cpu_work, self.gpu_work, self.id)
@@ -98,14 +99,12 @@ class Node(Entity):
 class Device(Entity):
     def __init__(self, x: int, y: int, range: float) -> None:
         super().__init__(x, y, range)
-        self.tasks: List[Tuple[Task, Optional[int]]] = []
+        self.tasks: Dict[UUID, Task] = {}
 
     def tick(self, world: World) -> None:
         # A tick for a device is one iteration over its tasks (it does more than one tick of work in the tick, we can change it later if we want)
-        indices_to_remove = []
-        for i in range(0, len(self.tasks)):
-            (task, ticks_left) = self.tasks[i]
-            if ticks_left is None:
+        for task in self.tasks.values():
+            if task.ticks_left is None:
                 # task is not running anywhere
                 # tries to find a place for it to run
                 best_time = None
@@ -117,24 +116,21 @@ class Device(Entity):
 
                 if best_time is not None:
                     best_node.spawn(task)
-                    self.tasks[i] = (task, best_time)
+                    task.ticks_left = best_time
 
-            elif ticks_left == 0:
+            elif task.ticks_left == 0:
                 # get the computation results
                 res = best_node.get_results(task.id)
                 assert res is not None, "node should have been done, but wasn't"
                 assert res.id == task.id, "task ID mismatch"
-                indices_to_remove.append(i)
+                del self.tasks[task.id]
 
             else:
-                # reduce the time left
-                self.tasks[i] = (task, ticks_left - 1)
-
-        for i in indices_to_remove[::-1]:
-            del self.tasks[i]
+                task.ticks_left -= 1
 
     def request_task(self, cpu_work: int, gpu_work: int) -> None:
-        self.tasks.append((Task(cpu_work, gpu_work), None))
+        task = Task(cpu_work, gpu_work)
+        self.tasks[task.id] = task
 
 
 class World:
