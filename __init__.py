@@ -122,6 +122,11 @@ class Node(Entity):
         del self.results[id]
         return res
 
+    def can_run(self, task: Task) -> bool:
+        meets_cpu_requirement = self.cpu_power > 0 or task.cpu_work == 0
+        meets_gpu_requirement = self.gpu_power > 0 or task.gpu_work == 0
+        return meets_cpu_requirement and meets_gpu_requirement
+
 
 class Device(Entity):
     def __init__(
@@ -156,7 +161,7 @@ class Device(Entity):
                         assert res.id == task.id, "task ID mismatch"
                         got_result = True
                         break
-                else:
+                elif node.can_run(task):
                     eta = node.estimate_time(task)
                     if eta < cur_min_eta:
                         cur_min_eta = eta
@@ -173,7 +178,7 @@ class Device(Entity):
     def request_task(self, cpu_work: int, gpu_work: int) -> None:
         task = Task(cpu_work, gpu_work)
         self.tasks[task.id] = task
-        if self.personal_node is not None:
+        if self.personal_node is not None and self.personal_node.can_run(task):
             self.personal_node.spawn(task)
 
     def move(self, dx: int, dy: int) -> None:
