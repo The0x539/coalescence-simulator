@@ -34,6 +34,11 @@ class Task:
         return RunningTask(self.cpu_work, self.gpu_work, self.id)
 
 
+class Result:
+    def __init__(self, id: UUID) -> None:
+        self.id = id
+
+
 class Entity(ABC):
     def __init__(self, x: int, y: int, range: float) -> None:
         self.x = x
@@ -53,7 +58,7 @@ class Node(Entity):
         self.cpu_power = cpu_power
         self.gpu_power = gpu_power
         self.tasks: List[RunningTask] = []
-        self.results: Set[UUID] = set()
+        self.results: Dict[UUID, Result] = {}
         self.time_left = 0
 
     def tick(self, world: World) -> None:
@@ -64,7 +69,7 @@ class Node(Entity):
 
         if cur_task.is_complete():
             # yeah sure, popping takes a tick. whatever.
-            self.results.add(cur_task.id)
+            self.results[cur_task.id] = Result(cur_task.id)
             self.tasks = self.tasks[1:]
         else:
             cur_task.work(self.cpu_power, self.gpu_power)
@@ -81,9 +86,13 @@ class Node(Entity):
             max(task.cpu_work / self.cpu_power, task.gpu_work / self.gpu_power)
         )
 
-    def get_results(self, id: UUID) -> None:
-        # can be implemented to require ticks to send the data
-        pass
+    def get_results(self, id: UUID) -> Optional[Result]:
+        if id not in self.results:
+            return None
+
+        res = self.results[id]
+        del self.results[id]
+        return res
 
 
 class Device(Entity):
@@ -114,7 +123,9 @@ class Device(Entity):
 
             elif ticks_left == 0:
                 # get the computation results
-                best_node.get_results(task.id)
+                res = best_node.get_results(task.id)
+                assert res is not None, "node should have been done, but wasn't"
+                assert res.id == task.id, "task ID mismatch"
                 indices_to_remove.append(i)
 
             else:
