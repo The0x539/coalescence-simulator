@@ -57,7 +57,7 @@ class Entity(ABC):
         self.range = range
 
     @abstractmethod
-    def tick(self, world: World) -> None:
+    def tick(self, world: "World") -> None:
         ...
 
 
@@ -73,7 +73,7 @@ class Node(Entity):
         self.time_left = 0
         self.id = uuid4()
 
-    def tick(self, world: World) -> None:
+    def tick(self, world: "World") -> None:
         try:
             cur_task = self.tasks[0]
         except IndexError:
@@ -136,7 +136,7 @@ class Device(Entity):
         self.tasks: Dict[UUID, Task] = {}
         self.personal_node = personal_node
 
-    def tick(self, world: World) -> None:
+    def tick(self, world: "World") -> None:
 
         nearby_nodes = world.neighbors_of(self, Node)
 
