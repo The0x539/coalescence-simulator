@@ -1,6 +1,6 @@
 from uuid import UUID, uuid4
 import math
-from typing import List, Set, Optional, Tuple, Dict, TypeVar, Type, cast
+from typing import List, Set, Optional, Tuple, Dict, TypeVar, Type, cast, Callable
 from abc import ABC, abstractmethod
 from enum import Enum, auto
 import random
@@ -235,7 +235,7 @@ class World:
 
     def show(self) -> None:
         fig, ax = plt.subplots()
-        rc = lambda: f"{random.randrange(0, 255):02x}"
+        rc: Callable[[], str] = lambda: f"{random.randrange(0, 255):02x}"
 
         for entity in self.entities:
             linestyle = "--" if isinstance(entity, Device) else ":"
