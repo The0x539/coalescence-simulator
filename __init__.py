@@ -5,10 +5,10 @@ from abc import ABC, abstractmethod
 from enum import Enum, auto
 import random
 import matplotlib.pyplot as plt
-from time import sleep
+import time
 
-FPS = 8
-
+FPS: int = 8
+SECONDS_BETWEEN_VELOCITY_UPDATES: int = 1
 
 T = TypeVar("T")
 
@@ -63,7 +63,7 @@ class Result:
 
 
 class Entity(ABC):
-    def __init__(self, x: int, y: int, range: float) -> None:
+    def __init__(self, x: float, y: float, range: float) -> None:
         self.x = x
         self.y = y
         self.range = range
@@ -76,7 +76,7 @@ class Entity(ABC):
 
 class Node(Entity):
     def __init__(
-        self, x: int, y: int, cpu_power: int, gpu_power: int, range: float
+        self, x: float, y: float, cpu_power: int, gpu_power: int, range: float
     ) -> None:
         super().__init__(x, y, range)
         self.cpu_power = cpu_power
@@ -143,11 +143,12 @@ class Node(Entity):
 
 class Device(Entity):
     def __init__(
-        self, x: int, y: int, range: float, personal_node: Optional[Node] = None
+        self, x: float, y: float, range: float, personal_node: Optional[Node] = None
     ) -> None:
         super().__init__(x, y, range)
         self.tasks: Dict[UUID, Task] = {}
         self.personal_node = personal_node
+        self.velocity = (0.0, 0.0)
 
     def tick(self, world: "World") -> None:
 
@@ -194,12 +195,15 @@ class Device(Entity):
         if self.personal_node is not None and self.personal_node.can_run(task):
             self.personal_node.spawn(task)
 
-    def move(self, dx: int, dy: int) -> None:
-        self.x += dx
-        self.y += dy
+    def move(self) -> None:
+        self.x += self.velocity[0] / FPS
+        self.y += self.velocity[1] / FPS
         if self.personal_node is not None:
-            self.personal_node.x += dx
-            self.personal_node.y += dy
+            self.personal_node.x += self.velocity[0] / FPS
+            self.personal_node.y += self.velocity[1] / FPS
+
+    def update_velocity(self, x_velocity: float, y_velocity: float) -> None:
+        self.velocity = (x_velocity, y_velocity)
 
 
 class World:
@@ -294,15 +298,28 @@ def main() -> None:
     ax = fig.add_subplot(111)
     w.plot(ax)
 
+    last_frame_time = 0.0
+    last_velocity_time = 0.0
+
     while True:
-        fig.canvas.draw()
-        fig.canvas.flush_events()
-        sleep(1 / FPS)
-        for e in w.entities:
-            if isinstance(e, Device):
-                e.move(random.randrange(-2, 2), random.randrange(-2, 2))
-        w.tick()
-        w.plot(ax)
+        t = time.time()
+        if t - last_frame_time > 1 / FPS:
+            last_frame_time = t
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+
+            for e in w.entities:
+                if isinstance(e, Device):
+                    e.move()
+
+            if t - last_velocity_time > SECONDS_BETWEEN_VELOCITY_UPDATES:
+                last_velocity_time = t
+                for e in w.entities:
+                    if isinstance(e, Device):
+                        e.update_velocity(random.randrange(-5, 5), random.randrange(-5, 5))
+
+            w.tick()
+            w.plot(ax)
 
 
 if __name__ == "__main__":
