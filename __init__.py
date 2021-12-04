@@ -5,9 +5,19 @@ from abc import ABC, abstractmethod
 from enum import Enum, auto
 import random
 import matplotlib.pyplot as plt
+from time import sleep
+
+FPS = 8
 
 
 T = TypeVar("T")
+
+
+def random_color() -> str:
+    r = random.randrange(0, 255)
+    g = random.randrange(0, 255)
+    b = random.randrange(0, 255)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 class RunningTask:
@@ -57,6 +67,7 @@ class Entity(ABC):
         self.x = x
         self.y = y
         self.range = range
+        self.color = random_color()
 
     @abstractmethod
     def tick(self, world: "World") -> None:
@@ -233,25 +244,20 @@ class World:
 
         return neighbors
 
-    def show(self) -> None:
-        fig, ax = plt.subplots()
-        rc: Callable[[], str] = lambda: f"{random.randrange(0, 255):02x}"
-
+    def plot(self, ax) -> None:
+        ax.clear()
         for entity in self.entities:
             linestyle = "--" if isinstance(entity, Device) else ":"
 
-            color = f"#{rc()}{rc()}{rc()}"
             circle = plt.Circle(
                 (entity.x, entity.y),
                 entity.range,
                 fill=False,
-                color=color,
+                color=entity.color,
                 linestyle=linestyle,
             )
             ax.add_patch(circle)
-            ax.scatter(entity.x, entity.y, c=color)
-
-        plt.show()
+            ax.scatter(entity.x, entity.y, c=entity.color)
 
     def print(self) -> None:
         for e in self.entities:
@@ -283,7 +289,20 @@ def main() -> None:
         )
         w.add_entity(d)
 
-    w.print()
+    plt.ion()
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    w.plot(ax)
+
+    while True:
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+        sleep(1 / FPS)
+        for e in w.entities:
+            if isinstance(e, Device):
+                e.move(random.randrange(-2, 2), random.randrange(-2, 2))
+        w.tick()
+        w.plot(ax)
 
 
 if __name__ == "__main__":
