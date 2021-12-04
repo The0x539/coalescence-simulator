@@ -253,6 +253,15 @@ class World:
 
         plt.show()
 
+    def print(self) -> None:
+        for e in self.entities:
+            if isinstance(e, Node):
+                print(f"node @ ({e.x} {e.y}) with {len(e.tasks)} tasks in queue")
+            elif isinstance(e, Device):
+                print(f"device @ ({e.x} {e.y}) with {len(e.tasks)} tasks active")
+            else:
+                print(f"entity @ ({e.x} {e.y})")
+
 
 def main() -> None:
     w = World()
@@ -274,7 +283,7 @@ def main() -> None:
         )
         w.add_entity(d)
 
-    w.show()
+    w.print()
 
 
 if __name__ == "__main__":
