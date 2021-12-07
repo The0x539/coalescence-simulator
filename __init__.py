@@ -1,14 +1,22 @@
 from uuid import UUID, uuid4
 import math
-from typing import List, Set, Optional, Tuple, Dict, TypeVar, Type, cast, Callable
+from typing import List, Set, Optional, Dict, TypeVar, Type
 from abc import ABC, abstractmethod
-from enum import Enum, auto
 import random
 import matplotlib.pyplot as plt
 import time
 
 FPS: int = 8
 SECONDS_BETWEEN_VELOCITY_UPDATES: int = 1
+
+EXTRA_BUDGET_CONSIDERATION_FACTOR = 1.00
+WORK_PERFORMANCE_VARIATION = 0.01
+
+ANGLE_CHANGE_VARIATION = 5
+MAGNITUDE_CHANGE_VARIATION = 1
+MAXIMUM_MAGNITUDE = 10
+
+TESTING = False
 
 T = TypeVar("T")
 
@@ -23,23 +31,20 @@ def random_color() -> str:
 class RunningTask:
     def __init__(
         self,
-        cpu_work: int,
-        gpu_work: int,
+        budget: int,
         task_id: UUID,
         runner_id: UUID,
         heartbeat_time: int,
     ) -> None:
-        self.cpu_work = cpu_work
-        self.cpu_progress = 0
-        self.gpu_work = gpu_work
-        self.gpu_progress = 0
+        self.budget = budget
+        self.progress = 0
         self.id = task_id
         self.runner_id = runner_id
         self.heartbeat_time = heartbeat_time
         self.heartbeat_timer = heartbeat_time
 
     def is_complete(self) -> bool:
-        return self.cpu_progress >= self.cpu_work and self.gpu_progress >= self.gpu_work
+        return self.progress >= self.budget
 
     # returns True iff the task is due for a heartbeat check
     def heartbeat_tick(self) -> bool:
@@ -52,32 +57,25 @@ class RunningTask:
     def refresh_heartbeat(self) -> None:
         self.heartbeat_timer = self.heartbeat_time
 
-    def work(self, cpu_power: int, gpu_power: int) -> None:
-        self.cpu_progress = min(self.cpu_progress + cpu_power, self.cpu_work)
-        self.gpu_progress = min(self.gpu_progress + gpu_power, self.gpu_work)
+    def work(self) -> None:
+        self.progress += 1
 
-    def remaining_time(self, cpu_power: int, gpu_power: int) -> int:
-        remaining_cpu_work = self.cpu_work - self.cpu_progress
-        remaining_gpu_work = self.gpu_work - self.gpu_progress
-        return (
-            math.ceil(
-                max(remaining_cpu_work / cpu_power, remaining_gpu_work / gpu_power)
-            )
-            + 1
-        )
+    def remaining_budget(self) -> int:
+        return self.budget - self.progress
 
 
 class Task:
-    def __init__(self, cpu_work: int, gpu_work: int, heartbeat_time: int) -> None:
-        self.cpu_work = cpu_work
-        self.gpu_work = gpu_work
+    def __init__(self, cpu_budget: int, gpu_budget: int, heartbeat_time: int) -> None:
+        self.cpu_budget = cpu_budget
+        self.gpu_budget = gpu_budget
         self.heartbeat_time = heartbeat_time
         self.id = uuid4()
         self.runners: Dict[UUID, int] = {}
 
-    def run(self, runner_id: UUID) -> RunningTask:
+    def run(self, runner_id: UUID, cpu_power: int, gpu_power: int) -> RunningTask:
+        budget = math.ceil(max(self.cpu_budget / cpu_power, self.gpu_budget / gpu_power))
         return RunningTask(
-            self.cpu_work, self.gpu_work, self.id, runner_id, self.heartbeat_time
+            math.ceil(budget * EXTRA_BUDGET_CONSIDERATION_FACTOR), self.id, runner_id, self.heartbeat_time
         )
 
 
@@ -144,12 +142,12 @@ class Node(Entity):
     def estimate_time(self, task: Task) -> int:
         # returns the amount of time before the node would complete the task
         task_time = math.ceil(
-            max(task.cpu_work / self.cpu_power, task.gpu_work / self.gpu_power)
+            max(task.cpu_budget / self.cpu_power, task.gpu_budget / self.gpu_power)
         )
         return self.time_left + task_time + 1  # 1 extra tick for the "pop"
 
     def spawn(self, task: Task) -> None:
-        self.tasks.append(task.run(self.id))
+        self.tasks.append(task.run(self.id, self.cpu_power, self.gpu_power))
         self.time_left = self.estimate_time(task)
         task.runners[self.id] = self.time_left
 
@@ -163,7 +161,7 @@ class Node(Entity):
             # ok dude, I wasn't running it anyway
             return
 
-        self.time_left -= running_task.remaining_time(self.cpu_power, self.gpu_power)
+        self.time_left -= running_task.remaining_budget(self.cpu_power, self.gpu_power)
         del self.tasks[index]
 
     def get_results(self, id: UUID) -> Optional[Result]:
@@ -175,8 +173,8 @@ class Node(Entity):
         return res
 
     def can_run(self, task: Task) -> bool:
-        meets_cpu_requirement = self.cpu_power > 0 or task.cpu_work == 0
-        meets_gpu_requirement = self.gpu_power > 0 or task.gpu_work == 0
+        meets_cpu_requirement = self.cpu_power > 0 or task.cpu_budget == 0
+        meets_gpu_requirement = self.gpu_power > 0 or task.gpu_budget == 0
         return meets_cpu_requirement and meets_gpu_requirement
 
 
@@ -187,7 +185,8 @@ class Device(Entity):
         super().__init__(x, y, range)
         self.tasks: Dict[UUID, Task] = {}
         self.personal_node = personal_node
-        self.velocity = (0.0, 0.0)
+        self.v_ang = 0.0
+        self.v_mag = 0.0
 
     def tick(self, world: "World") -> None:
 
@@ -228,21 +227,31 @@ class Device(Entity):
             elif best_neighbor_for_task is not None:
                 best_neighbor_for_task.spawn(task)
 
-    def request_task(self, cpu_work: int, gpu_work: int, heartbeat_time: int) -> None:
-        task = Task(cpu_work, gpu_work, heartbeat_time)
+    def request_task(self, cpu_budget: int, gpu_budget: int, heartbeat_time: int) -> None:
+        task = Task(cpu_budget, gpu_budget, heartbeat_time)
         self.tasks[task.id] = task
         if self.personal_node is not None and self.personal_node.can_run(task):
             self.personal_node.spawn(task)
 
     def move(self) -> None:
-        self.x += self.velocity[0] / FPS
-        self.y += self.velocity[1] / FPS
+        x_mov = math.cos(self.v_ang) * self.v_mag / FPS
+        y_mov = math.sin(self.v_ang) * self.v_mag / FPS
+        self.x += x_mov
+        self.y += y_mov
         if self.personal_node is not None:
-            self.personal_node.x += self.velocity[0] / FPS
-            self.personal_node.y += self.velocity[1] / FPS
+            self.personal_node.x += x_mov
+            self.personal_node.y += y_mov
 
-    def update_velocity(self, x_velocity: float, y_velocity: float) -> None:
-        self.velocity = (x_velocity, y_velocity)
+    def change_velocity(self, angle: float, magnitude: float) -> None:
+        assert magnitude <= MAXIMUM_MAGNITUDE
+        self.v_ang += angle
+        self.v_mag += magnitude
+        if self.v_mag < 0:
+            self.v_mag = -self.v_mag
+        if self.v_mag > MAXIMUM_MAGNITUDE:
+            assert self.v_mag - MAXIMUM_MAGNITUDE <= MAXIMUM_MAGNITUDE
+            self.v_mag = 2 * MAXIMUM_MAGNITUDE - self.v_mag
+
 
 
 class World:
