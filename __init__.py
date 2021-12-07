@@ -43,6 +43,7 @@ class RunningTask:
         task_id: UUID,
         runner_id: UUID,
         heartbeat_time: int,
+        running_on_own_node: bool
     ) -> None:
         self.time_budget = time_budget
         self.time_spent = 0
@@ -52,6 +53,7 @@ class RunningTask:
         self.runner_id = runner_id
         self.heartbeat_time = heartbeat_time
         self.heartbeat_timer = heartbeat_time
+        self.running_on_own_node = running_on_own_node
 
     def is_complete(self) -> bool:
         return self.cpu_work_left <= 0 and self.gpu_work_left <= 0
@@ -68,6 +70,8 @@ class RunningTask:
         self.heartbeat_timer = self.heartbeat_time
 
     def work(self, cpu_power: int, gpu_power: int) -> None:
+        if not self.running_on_own_node:
+            assert self.time_budget > 0
         self.time_spent += 1
         self.cpu_work_left -= cpu_power * random.gauss(1, PERFORMANCE_VARIATION)
         self.gpu_work_left -= gpu_power * random.gauss(1, PERFORMANCE_VARIATION)
@@ -84,10 +88,11 @@ class Task:
         self.id = uuid4()
         self.runners: Dict[UUID, int] = {}
 
-    def run(self, runner_id: UUID, cpu_power: int, gpu_power: int, is_own_node: bool) -> RunningTask:
+    def run(self, runner_id: UUID, cpu_power: int, gpu_power: int, running_on_own_node: bool) -> RunningTask:
         budget = math.ceil(max(self.cpu_work / cpu_power, self.gpu_work / gpu_power))
         return RunningTask(
-            math.ceil(budget * EXTRA_BUDGET_CONSIDERATION_FACTOR), self.cpu_work, self.gpu_work, self.id, runner_id, self.heartbeat_time
+            math.ceil(budget * EXTRA_BUDGET_CONSIDERATION_FACTOR),
+                self.cpu_work, self.gpu_work, self.id, runner_id, self.heartbeat_time, running_on_own_node
         )
 
 
