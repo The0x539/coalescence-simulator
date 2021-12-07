@@ -332,20 +332,20 @@ class World:
 
         return neighbors
 
-    def plot(self, ax) -> None:
-        ax.clear()
-        for entity in self.entities:
-            linestyle = "--" if isinstance(entity, Device) else ":"
+    # def plot(self, ax) -> None:
+    #    ax.clear()
+    #    for entity in self.entities:
+    #        linestyle = "--" if isinstance(entity, Device) else ":"
 
-            circle = plt.Circle(
-                (entity.x, entity.y),
-                entity.range,
-                fill=False,
-                color=entity.color,
-                linestyle=linestyle,
-            )
-            ax.add_patch(circle)
-            ax.scatter(entity.x, entity.y, c=entity.color)
+    #        circle = plt.Circle(
+    #            (entity.x, entity.y),
+    #            entity.range,
+    #            fill=False,
+    #            color=entity.color,
+    #            linestyle=linestyle,
+    #        )
+    #        ax.add_patch(circle)
+    #        ax.scatter(entity.x, entity.y, c=entity.color)
 
     def print(self) -> None:
         for e in self.entities:
@@ -377,36 +377,36 @@ def main() -> None:
         )
         w.add_entity(d)
 
-    plt.ion()
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    w.plot(ax)
+    # plt.ion()
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111)
+    # w.plot(ax)
 
     last_frame_time = 0.0
     last_velocity_time = 0.0
 
-    while True:
-        t = time.time()
-        if t - last_frame_time > 1 / FPS:
-            last_frame_time = t
-            fig.canvas.draw()
-            fig.canvas.flush_events()
+    # while True:
+    #    t = time.time()
+    #    if t - last_frame_time > 1 / FPS:
+    #        last_frame_time = t
+    #        fig.canvas.draw()
+    #        fig.canvas.flush_events()
 
-            for e in w.entities:
-                if isinstance(e, Device):
-                    e.move()
+    #        for e in w.entities:
+    #            if isinstance(e, Device):
+    #                e.move()
 
-            if t - last_velocity_time > SECONDS_BETWEEN_VELOCITY_UPDATES:
-                last_velocity_time = t
-                for e in w.entities:
-                    if isinstance(e, Device):
-                        e.change_velocity(
-                            random.gauss(0, ANGLE_CHANGE_VARIATION),
-                            random.gauss(0, MAGNITUDE_CHANGE_VARIATION),
-                        )
+    #        if t - last_velocity_time > SECONDS_BETWEEN_VELOCITY_UPDATES:
+    #            last_velocity_time = t
+    #            for e in w.entities:
+    #                if isinstance(e, Device):
+    #                    e.change_velocity(
+    #                        random.gauss(0, ANGLE_CHANGE_VARIATION),
+    #                        random.gauss(0, MAGNITUDE_CHANGE_VARIATION),
+    #                    )
 
-            w.tick()
-            w.plot(ax)
+    #        w.tick()
+    #        w.plot(ax)
 
 
 if __name__ == "__main__":
