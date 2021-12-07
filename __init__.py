@@ -270,9 +270,9 @@ class Device(Entity):
                 best_neighbor_for_task.spawn(task, False)
 
     def request_task(
-        self, cpu_budget: int, gpu_budget: int, heartbeat_time: int, cur_time: int
+        self, cpu_work: int, gpu_work: int, heartbeat_interval: int, cur_time: int
     ) -> None:
-        task = Task(cpu_budget, gpu_budget, heartbeat_time, cur_time)
+        task = Task(cpu_work, gpu_work, heartbeat_interval, cur_time)
         self.tasks[task.id] = task
         if self.personal_node is not None and self.personal_node.can_run(task):
             self.personal_node.spawn(task, True)
@@ -463,10 +463,10 @@ def simulate(p: TestingProfile) -> None:
                 )
                 e.move()
                 if random.random() < p.task_request_chance:
-                    t = Task(
+                    e.request_task(
                         cpu_work=p.task_cpu_work(),
                         gpu_work=p.task_gpu_work(),
-                        heartbeat_time=p.task_heartbeat_interval(),
+                        heartbeat_interval=p.task_heartbeat_interval(),
                         cur_time=w.clock,
                     )
         w.tick()
