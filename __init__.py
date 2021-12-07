@@ -36,21 +36,23 @@ def random_color() -> str:
 class RunningTask:
     def __init__(
         self,
-        time_budget: Optional[int],
+        time_budget: int,
         cpu_work: int,
         gpu_work: int,
         task_id: UUID,
         runner_id: UUID,
         heartbeat_time: int,
+        is_local: bool,
     ) -> None:
         self.time_budget = time_budget
         self.time_spent = 0
-        self.cpu_work_left = cpu_work
-        self.gpu_work_left = gpu_work
+        self.cpu_work_left = float(cpu_work)
+        self.gpu_work_left = float(gpu_work)
         self.id = task_id
         self.runner_id = runner_id
         self.heartbeat_time = heartbeat_time
         self.heartbeat_timer = heartbeat_time
+        self.is_local = is_local
 
     def is_complete(self) -> bool:
         return self.cpu_work_left <= 0 and self.gpu_work_left <= 0
@@ -72,7 +74,14 @@ class RunningTask:
         self.gpu_work_left -= gpu_power * random.gauss(1, PERFORMANCE_VARIATION)
 
     def has_exhausted_budget(self) -> bool:
-        return self.time_budget is None or self.time_spent >= self.time_budget
+        if self.is_local:
+            # local tasks aren't subject to actual budget limitations
+            return False
+        else:
+            return self.time_spent >= self.time_budget
+
+    def remaining_budget(self) -> int:
+        return max(self.time_budget - self.time_spent, 0)
 
 
 class Task:
@@ -84,12 +93,11 @@ class Task:
         self.runners: Dict[UUID, int] = {}
 
     def run(
-        self, runner_id: UUID, cpu_power: int, gpu_power: int, running_on_own_node: bool
+        self, runner_id: UUID, cpu_power: int, gpu_power: int, is_local: bool
     ) -> RunningTask:
-        budget = None
-        if not running_on_own_node:
-            estimate = max(self.cpu_work / cpu_power, self.gpu_work / gpu_power)
-            budget = math.ceil(estimate * EXTRA_BUDGET_CONSIDERATION_FACTOR)
+        estimate = max(self.cpu_work / cpu_power, self.gpu_work / gpu_power)
+        budget = math.ceil(estimate * EXTRA_BUDGET_CONSIDERATION_FACTOR)
+
         return RunningTask(
             budget,
             self.cpu_work,
@@ -97,6 +105,7 @@ class Task:
             self.id,
             runner_id,
             self.heartbeat_time,
+            is_local,
         )
 
 
@@ -170,8 +179,8 @@ class Node(Entity):
         )
         return self.time_left + task_time + 1  # 1 extra tick for the "pop"
 
-    def spawn(self, task: Task) -> None:
-        self.tasks.append(task.run(self.id, self.cpu_power, self.gpu_power))
+    def spawn(self, task: Task, is_local: bool) -> None:
+        self.tasks.append(task.run(self.id, self.cpu_power, self.gpu_power, is_local))
         self.time_left = self.estimate_time(task)
         task.runners[self.id] = self.time_left
 
@@ -185,7 +194,7 @@ class Node(Entity):
             # ok dude, I wasn't running it anyway
             return
 
-        self.time_left -= running_task.remaining_budget(self.cpu_power, self.gpu_power)
+        self.time_left -= running_task.remaining_budget()
         del self.tasks[index]
 
     def get_results(self, id: UUID) -> Optional[Result]:
@@ -249,7 +258,9 @@ class Device(Entity):
                     # ideally we could tell neighbors to also cancel it but whatever
                     self.personal_node.cancel(task.id)
             elif best_neighbor_for_task is not None:
-                best_neighbor_for_task.spawn(task)
+                # it should have already been spawned over in request_task
+                assert best_neighbor_for_task is not self.personal_node
+                best_neighbor_for_task.spawn(task, False)
 
     def request_task(
         self, cpu_budget: int, gpu_budget: int, heartbeat_time: int
@@ -257,7 +268,7 @@ class Device(Entity):
         task = Task(cpu_budget, gpu_budget, heartbeat_time)
         self.tasks[task.id] = task
         if self.personal_node is not None and self.personal_node.can_run(task):
-            self.personal_node.spawn(task)
+            self.personal_node.spawn(task, True)
 
     def move(self) -> None:
         x_mov = math.cos(self.v_ang) * self.v_mag / FPS
