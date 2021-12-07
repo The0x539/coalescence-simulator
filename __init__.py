@@ -10,13 +10,14 @@ FPS: int = 8
 SECONDS_BETWEEN_VELOCITY_UPDATES: int = 1
 
 EXTRA_BUDGET_CONSIDERATION_FACTOR = 1.00
-WORK_PERFORMANCE_VARIATION = 0.01
+PERFORMANCE_VARIATION = 0.01
 
 ANGLE_CHANGE_VARIATION = 5
 MAGNITUDE_CHANGE_VARIATION = 1
 MAXIMUM_MAGNITUDE = 10
 
 TESTING = False
+NUM_NODES_MU
 
 T = TypeVar("T")
 
@@ -32,19 +33,23 @@ class RunningTask:
     def __init__(
         self,
         budget: int,
+        cpu_work: int,
+        gpu_work: int,
         task_id: UUID,
         runner_id: UUID,
         heartbeat_time: int,
     ) -> None:
         self.budget = budget
         self.progress = 0
+        self.cpu_work_left = cpu_work
+        self.gpu_work_left = gpu_work
         self.id = task_id
         self.runner_id = runner_id
         self.heartbeat_time = heartbeat_time
         self.heartbeat_timer = heartbeat_time
 
     def is_complete(self) -> bool:
-        return self.progress >= self.budget
+        return self.cpu_work_left <= 0 and self.gpu_work_left <= 0
 
     # returns True iff the task is due for a heartbeat check
     def heartbeat_tick(self) -> bool:
@@ -57,8 +62,10 @@ class RunningTask:
     def refresh_heartbeat(self) -> None:
         self.heartbeat_timer = self.heartbeat_time
 
-    def work(self) -> None:
-        self.progress += 1
+    def work(self, cpu_power: int, gpu_power: int) -> None:
+        assert self.budget > 0
+        self.cpu_work_left -= cpu_power * random.gauss(1, PERFORMANCE_VARIATION)
+        self.gpu_work_left -= gpu_power * random.gauss(1, PERFORMANCE_VARIATION)
 
     def remaining_budget(self) -> int:
         return self.budget - self.progress
@@ -130,7 +137,10 @@ class Node(Entity):
                 # so just early return, whatever
                 return
 
-        if cur_task.is_complete():
+        if cur_task.remaining_budget() <= 0:
+            self.cancel(cur_task.id)
+
+        elif cur_task.is_complete():
             # yeah sure, popping takes a tick. whatever.
             self.results[cur_task.id] = Result(cur_task.id)
             self.tasks = self.tasks[1:]
