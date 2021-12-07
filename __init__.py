@@ -83,6 +83,8 @@ class RunningTask:
         self.time_spent += 1
         self.cpu_work_left -= cpu_power * random.gauss(1, PERFORMANCE_VARIATION)
         self.gpu_work_left -= gpu_power * random.gauss(1, PERFORMANCE_VARIATION)
+        if self.is_complete():
+            print(f"a task finished {'locally' if self.is_local else 'remotely'}!")
 
     def has_exhausted_budget(self) -> bool:
         if self.is_local:
@@ -248,6 +250,8 @@ class Device(Entity):
 
         nearby_nodes = world.neighbors_of(self, Node)
 
+        completed_task_ids = []
+
         # A tick for a device is one iteration over its tasks (it does more than one tick of work in the tick, we can change it later if we want)
         for task in self.tasks.values():
             got_result = False
@@ -268,7 +272,14 @@ class Device(Entity):
 
                         assert res.id == task.id, "task ID mismatch"
                         got_result = True
-                        print(f"Got result in {cur_time - task.time_of_request} ticks")
+                        print(
+                            f"Got result in",
+                            cur_time - task.time_of_request,
+                            "ticks, result came from",
+                            "local node"
+                            if node is self.personal_node
+                            else "remote node",
+                        )
                         break
                 elif node.can_run(task):
                     eta = node.estimate_time(task)
@@ -277,7 +288,7 @@ class Device(Entity):
                         best_neighbor_for_task = node
 
             if got_result:
-                del self.tasks[task.id]
+                completed_task_ids.append(task.id)
                 if self.personal_node is not None:
                     # ideally we could tell neighbors to also cancel it but whatever
                     self.personal_node.cancel(task.id)
@@ -285,6 +296,9 @@ class Device(Entity):
                 # it should have already been spawned over in request_task
                 assert best_neighbor_for_task is not self.personal_node
                 best_neighbor_for_task.spawn(task, False)
+
+        for id in completed_task_ids:
+            del self.tasks[id]
 
     def request_task(
         self, cpu_work: int, gpu_work: int, heartbeat_interval: int, cur_time: int
@@ -424,17 +438,17 @@ INITIAL_TESTING_PROFILE = TestingProfile(
     node_gpu_power=lambda *_: random.randrange(0, 5),
     device_count=5,
     device_range=lambda *_: random.uniform(10.0, 25.0),
-    device_personal_node_rate=0.5,
+    device_personal_node_rate=0.00005,
     device_personal_node_power_multiplier=0.25,
-    task_cpu_work=lambda *_: random.randrange(100, 1000),
+    task_cpu_work=lambda *_: random.randrange(10, 100),
     # 25% of tasks involve a GPU workload
-    task_gpu_work=lambda *_: random.randrange(50, 300)
+    task_gpu_work=lambda *_: random.randrange(5, 30)
     if random.randrange(0, 4) == 0
     else 0,
     task_heartbeat_interval=lambda *_: 5,
     # every tick, for every device, 10% chance of spawning a task
     task_request_chance=0.1,
-    duration=1000,
+    duration=100000,
     movement_direction_variation=lambda *_: random.gauss(0, 0.05),  # radians
     movement_magnitude_variation=lambda *_: random.gauss(0, 0.1),
 )
@@ -464,6 +478,7 @@ def simulate(p: TestingProfile) -> None:
                 gpu_power=p.device_personal_node_power_multiplier * p.node_gpu_power(),
                 range=device_range,
             )
+            w.add_entity(personal_node)
 
         d = Device(
             x=random.randrange(p.gen_space.x0, p.gen_space.x1),
