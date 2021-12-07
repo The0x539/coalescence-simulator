@@ -1,6 +1,6 @@
 from uuid import UUID, uuid4
 import math
-from typing import List, Set, Optional, Dict, TypeVar, Type, Callable
+from typing import List, Set, Optional, Dict, TypeVar, Type, Callable, Union
 from abc import ABC, abstractmethod
 import random
 import matplotlib.pyplot as plt
@@ -33,6 +33,15 @@ def random_color() -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def safe_div(num: Union[int, float], den: Union[int, float]) -> float:
+    if num == 0 and den == 0:
+        return 0
+    else:
+        assert den != 0, "division by zero!"
+
+    return num / den
+
+
 class RunningTask:
     def __init__(
         self,
@@ -44,6 +53,8 @@ class RunningTask:
         heartbeat_time: int,
         is_local: bool,
     ) -> None:
+        assert heartbeat_time > 0
+
         self.time_budget = time_budget
         self.time_spent = 0
         self.cpu_work_left = float(cpu_work)
@@ -60,7 +71,7 @@ class RunningTask:
     # returns True iff the task is due for a heartbeat check
     def heartbeat_tick(self) -> bool:
         # this should never happen. if it does, it's a bug in the simulator.
-        assert self.heartbeat_timer > 0, "Missed heartbeat check!"
+        assert self.heartbeat_timer > 0, f"Missed heartbeat check for task {self.id}!"
 
         self.heartbeat_timer -= 1
         return self.heartbeat_timer == 0
@@ -98,7 +109,9 @@ class Task:
     def run(
         self, runner_id: UUID, cpu_power: float, gpu_power: float, is_local: bool
     ) -> RunningTask:
-        estimate = max(self.cpu_work / cpu_power, self.gpu_work / gpu_power)
+        estimate = max(
+            safe_div(self.cpu_work, cpu_power), safe_div(self.gpu_work, gpu_power)
+        )
         budget = math.ceil(estimate * EXTRA_BUDGET_CONSIDERATION_FACTOR)
 
         return RunningTask(
@@ -153,7 +166,8 @@ class Node(Entity):
         if cur_task.heartbeat_tick():
             # Check whether the device who requested it is (still) in range
             for device in world.neighbors_of(self, Device):
-                if device.id == cur_task.id:
+                if cur_task.id in device.tasks:
+                    assert device.tasks[cur_task.id].id == cur_task.id
                     cur_task.refresh_heartbeat()
                     break
             else:
@@ -178,7 +192,10 @@ class Node(Entity):
     def estimate_time(self, task: Task) -> int:
         # returns the amount of time before the node would complete the task
         task_time = math.ceil(
-            max(task.cpu_work / self.cpu_power, task.gpu_work / self.gpu_power)
+            max(
+                safe_div(task.cpu_work, self.cpu_power),
+                safe_div(task.gpu_work, self.gpu_power),
+            )
         )
         return self.time_left + task_time + 1  # 1 extra tick for the "pop"
 
@@ -234,7 +251,7 @@ class Device(Entity):
         # A tick for a device is one iteration over its tasks (it does more than one tick of work in the tick, we can change it later if we want)
         for task in self.tasks.values():
             got_result = False
-            cur_min_eta = min(task.runners.values())
+            cur_min_eta = min(task.runners.values()) if len(task.runners) > 0 else None
 
             for node_id in task.runners.keys():
                 if task.runners[node_id] > 0:
@@ -255,7 +272,7 @@ class Device(Entity):
                         break
                 elif node.can_run(task):
                     eta = node.estimate_time(task)
-                    if eta < cur_min_eta:
+                    if cur_min_eta is None or eta < cur_min_eta:
                         cur_min_eta = eta
                         best_neighbor_for_task = node
 
@@ -411,8 +428,10 @@ INITIAL_TESTING_PROFILE = TestingProfile(
     device_personal_node_power_multiplier=0.25,
     task_cpu_work=lambda *_: random.randrange(100, 1000),
     # 25% of tasks involve a GPU workload
-    task_gpu_work=lambda *_: random.randrange(50, 300),
-    task_heartbeat_interval=lambda *_: 5 if random.randrange(0, 4) == 0 else 0,
+    task_gpu_work=lambda *_: random.randrange(50, 300)
+    if random.randrange(0, 4) == 0
+    else 0,
+    task_heartbeat_interval=lambda *_: 5,
     # every tick, for every device, 10% chance of spawning a task
     task_request_chance=0.1,
     duration=1000,
