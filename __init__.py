@@ -21,15 +21,36 @@ def random_color() -> str:
 
 
 class RunningTask:
-    def __init__(self, cpu_work: int, gpu_work: int, id: UUID) -> None:
+    def __init__(
+        self,
+        cpu_work: int,
+        gpu_work: int,
+        task_id: UUID,
+        runner_id: UUID,
+        heartbeat_time: int,
+    ) -> None:
         self.cpu_work = cpu_work
         self.cpu_progress = 0
         self.gpu_work = gpu_work
         self.gpu_progress = 0
-        self.id = id
+        self.id = task_id
+        self.runner_id = runner_id
+        self.heartbeat_time = heartbeat_time
+        self.heartbeat_timer = heartbeat_time
 
     def is_complete(self) -> bool:
         return self.cpu_progress >= self.cpu_work and self.gpu_progress >= self.gpu_work
+
+    # returns True iff the task is due for a heartbeat check
+    def heartbeat_tick(self) -> bool:
+        # this should never happen. if it does, it's a bug in the simulator.
+        assert self.heartbeat_timer > 0, "Missed heartbeat check!"
+
+        self.heartbeat_timer -= 1
+        return self.heartbeat_timer == 0
+
+    def refresh_heartbeat(self) -> None:
+        self.heartbeat_timer = self.heartbeat_time
 
     def work(self, cpu_power: int, gpu_power: int) -> None:
         self.cpu_progress = min(self.cpu_progress + cpu_power, self.cpu_work)
@@ -47,14 +68,17 @@ class RunningTask:
 
 
 class Task:
-    def __init__(self, cpu_work: int, gpu_work: int) -> None:
+    def __init__(self, cpu_work: int, gpu_work: int, heartbeat_time: int) -> None:
         self.cpu_work = cpu_work
         self.gpu_work = gpu_work
+        self.heartbeat_time = heartbeat_time
         self.id = uuid4()
         self.runners: Dict[UUID, int] = {}
 
-    def run(self) -> RunningTask:
-        return RunningTask(self.cpu_work, self.gpu_work, self.id)
+    def run(self, runner_id: UUID) -> RunningTask:
+        return RunningTask(
+            self.cpu_work, self.gpu_work, self.id, runner_id, self.heartbeat_time
+        )
 
 
 class Result:
@@ -68,6 +92,7 @@ class Entity(ABC):
         self.y = y
         self.range = range
         self.color = random_color()
+        self.id = uuid4()
 
     @abstractmethod
     def tick(self, world: "World") -> None:
@@ -84,7 +109,6 @@ class Node(Entity):
         self.tasks: List[RunningTask] = []
         self.results: Dict[UUID, Result] = {}
         self.time_left = 0
-        self.id = uuid4()
 
     def tick(self, world: "World") -> None:
         try:
@@ -95,10 +119,25 @@ class Node(Entity):
         if self.time_left > 0:
             self.time_left -= 1
 
+        if cur_task.heartbeat_tick():
+            # Check whether the device who requested it is (still) in range
+            for device in world.neighbors_of(self, Device):
+                if device.id == cur_task.id:
+                    cur_task.refresh_heartbeat()
+                    break
+            else:
+                self.cancel(cur_task.id)
+                # at the time of writing, the rest of this function just ticks the task
+                # but we just cancelled the task (which did take up a tick, which we measured)
+                # so just early return, whatever
+                return
+
         if cur_task.is_complete():
             # yeah sure, popping takes a tick. whatever.
             self.results[cur_task.id] = Result(cur_task.id)
             self.tasks = self.tasks[1:]
+            # TODO: heartbeats for results?
+            # how expensive are we imagining it to be to hold on to a result?
         else:
             cur_task.work(self.cpu_power, self.gpu_power)
 
@@ -110,13 +149,13 @@ class Node(Entity):
         return self.time_left + task_time + 1  # 1 extra tick for the "pop"
 
     def spawn(self, task: Task) -> None:
-        self.tasks.append(task.run())
+        self.tasks.append(task.run(self.id))
         self.time_left = self.estimate_time(task)
         task.runners[self.id] = self.time_left
 
-    def cancel(self, task: Task) -> None:
+    def cancel(self, task_id: UUID) -> None:
         for (i, r_t) in enumerate(self.tasks):
-            if r_t.id == task.id:
+            if r_t.id == task_id:
                 index = i
                 running_task = r_t
                 break
@@ -185,12 +224,12 @@ class Device(Entity):
                 del self.tasks[task.id]
                 if self.personal_node is not None:
                     # ideally we could tell neighbors to also cancel it but whatever
-                    self.personal_node.cancel(task)
+                    self.personal_node.cancel(task.id)
             elif best_neighbor_for_task is not None:
                 best_neighbor_for_task.spawn(task)
 
-    def request_task(self, cpu_work: int, gpu_work: int) -> None:
-        task = Task(cpu_work, gpu_work)
+    def request_task(self, cpu_work: int, gpu_work: int, heartbeat_time: int) -> None:
+        task = Task(cpu_work, gpu_work, heartbeat_time)
         self.tasks[task.id] = task
         if self.personal_node is not None and self.personal_node.can_run(task):
             self.personal_node.spawn(task)
