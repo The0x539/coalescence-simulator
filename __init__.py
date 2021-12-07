@@ -72,17 +72,17 @@ class RunningTask:
 
 
 class Task:
-    def __init__(self, cpu_budget: int, gpu_budget: int, heartbeat_time: int) -> None:
-        self.cpu_budget = cpu_budget
-        self.gpu_budget = gpu_budget
+    def __init__(self, cpu_work: int, gpu_work: int, heartbeat_time: int) -> None:
+        self.cpu_work = cpu_work
+        self.gpu_work = gpu_work
         self.heartbeat_time = heartbeat_time
         self.id = uuid4()
         self.runners: Dict[UUID, int] = {}
 
     def run(self, runner_id: UUID, cpu_power: int, gpu_power: int) -> RunningTask:
-        budget = math.ceil(max(self.cpu_budget / cpu_power, self.gpu_budget / gpu_power))
+        budget = math.ceil(max(self.cpu_work / cpu_power, self.gpu_work / gpu_power))
         return RunningTask(
-            math.ceil(budget * EXTRA_BUDGET_CONSIDERATION_FACTOR), self.id, runner_id, self.heartbeat_time
+            math.ceil(budget * EXTRA_BUDGET_CONSIDERATION_FACTOR), self.cpu_work, self.gpu_work, self.id, runner_id, self.heartbeat_time
         )
 
 
@@ -152,7 +152,7 @@ class Node(Entity):
     def estimate_time(self, task: Task) -> int:
         # returns the amount of time before the node would complete the task
         task_time = math.ceil(
-            max(task.cpu_budget / self.cpu_power, task.gpu_budget / self.gpu_power)
+            max(task.cpu_work / self.cpu_power, task.gpu_work / self.gpu_power)
         )
         return self.time_left + task_time + 1  # 1 extra tick for the "pop"
 
@@ -183,8 +183,8 @@ class Node(Entity):
         return res
 
     def can_run(self, task: Task) -> bool:
-        meets_cpu_requirement = self.cpu_power > 0 or task.cpu_budget == 0
-        meets_gpu_requirement = self.gpu_power > 0 or task.gpu_budget == 0
+        meets_cpu_requirement = self.cpu_power > 0 or task.cpu_work == 0
+        meets_gpu_requirement = self.gpu_power > 0 or task.gpu_work == 0
         return meets_cpu_requirement and meets_gpu_requirement
 
 
