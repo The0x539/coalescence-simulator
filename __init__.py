@@ -1,6 +1,6 @@
 from uuid import UUID, uuid4
 import math
-from typing import List, Set, Optional, Dict, TypeVar, Type, Callable, Union
+from typing import List, Set, Optional, Dict, TypeVar, Type, Callable, Union, Any, Tuple
 from abc import ABC, abstractmethod
 import random
 import matplotlib.pyplot as plt
@@ -13,14 +13,15 @@ SECONDS_BETWEEN_VELOCITY_UPDATES: int = 1
 EXTRA_BUDGET_CONSIDERATION_FACTOR = 1.00
 PERFORMANCE_VARIATION = 0.01
 
-ANGLE_CHANGE_VARIATION = 5
-MAGNITUDE_CHANGE_VARIATION = 1
 MAXIMUM_MAGNITUDE = 10
 
-NUM_NODES_VAR = 1
-NODE_RANGE_VAR = 1
-NODE_POWER_VAR = 1
-TASK_SIZE_VAR = 1
+logged_data: Dict[str, List[Any]] = {}
+
+
+def log_data(name: str, data: Any):
+    if name not in logged_data.keys():
+        logged_data[name] = []
+    logged_data[name].append(data)
 
 
 T = TypeVar("T")
@@ -44,14 +45,14 @@ def safe_div(num: Union[int, float], den: Union[int, float]) -> float:
 
 class RunningTask:
     def __init__(
-        self,
-        time_budget: int,
-        cpu_work: int,
-        gpu_work: int,
-        task_id: UUID,
-        runner_id: UUID,
-        heartbeat_time: int,
-        is_local: bool,
+            self,
+            time_budget: int,
+            cpu_work: int,
+            gpu_work: int,
+            task_id: UUID,
+            runner_id: UUID,
+            heartbeat_time: int,
+            is_local: bool,
     ) -> None:
         assert heartbeat_time > 0
 
@@ -84,7 +85,6 @@ class RunningTask:
         self.cpu_work_left -= cpu_power * random.gauss(1, PERFORMANCE_VARIATION)
         self.gpu_work_left -= gpu_power * random.gauss(1, PERFORMANCE_VARIATION)
         if self.is_complete():
-            print(f"a task finished {'locally' if self.is_local else 'remotely'}!")
 
     def has_exhausted_budget(self) -> bool:
         if self.is_local:
@@ -99,7 +99,7 @@ class RunningTask:
 
 class Task:
     def __init__(
-        self, cpu_work: int, gpu_work: int, heartbeat_time: int, cur_time: int
+            self, cpu_work: int, gpu_work: int, heartbeat_time: int, cur_time: int
     ) -> None:
         self.cpu_work = cpu_work
         self.gpu_work = gpu_work
@@ -109,7 +109,7 @@ class Task:
         self.time_of_request = cur_time
 
     def run(
-        self, runner_id: UUID, cpu_power: float, gpu_power: float, is_local: bool
+            self, runner_id: UUID, cpu_power: float, gpu_power: float, is_local: bool
     ) -> RunningTask:
         estimate = max(
             safe_div(self.cpu_work, cpu_power), safe_div(self.gpu_work, gpu_power)
@@ -147,13 +147,13 @@ class Entity(ABC):
 
 class Node(Entity):
     def __init__(
-        self, x: float, y: float, cpu_power: float, gpu_power: float, range: float
+            self, x: float, y: float, cpu_power: float, gpu_power: float, range: float
     ) -> None:
         super().__init__(x, y, range)
         self.cpu_power = cpu_power
         self.gpu_power = gpu_power
         self.tasks: List[RunningTask] = []
-        self.results: Dict[UUID, Result] = {}
+        self.results: Dict[UUID, Tuple[Result, int]] = {}
         self.time_left = 0
 
     def tick(self, world: "World", cur_time: int) -> None:
@@ -179,15 +179,16 @@ class Node(Entity):
                 # so just early return, whatever
                 return
 
-        if cur_task.has_exhausted_budget():
-            self.cancel(cur_task.id)
-
-        elif cur_task.is_complete():
+        if cur_task.is_complete():
             # yeah sure, popping takes a tick. whatever.
-            self.results[cur_task.id] = Result(cur_task.id)
+            self.results[cur_task.id] = (Result(cur_task.id), cur_task.time_spent)
             self.tasks = self.tasks[1:]
             # TODO: heartbeats for results?
             # how expensive are we imagining it to be to hold on to a result?
+
+        elif cur_task.has_exhausted_budget():
+            self.cancel(cur_task.id)
+
         else:
             cur_task.work(self.cpu_power, self.gpu_power)
 
@@ -202,6 +203,9 @@ class Node(Entity):
         return self.time_left + task_time + 1  # 1 extra tick for the "pop"
 
     def spawn(self, task: Task, is_local: bool) -> None:
+        if self.id in task.runners:
+            #
+            return
         self.tasks.append(task.run(self.id, self.cpu_power, self.gpu_power, is_local))
         self.time_left = self.estimate_time(task)
         task.runners[self.id] = self.time_left
@@ -216,6 +220,8 @@ class Node(Entity):
             # ok dude, I wasn't running it anyway
             return
 
+        log_data("Wasted Compute Time", (task_id, running_task.time_spent))
+
         self.time_left -= running_task.remaining_budget()
         del self.tasks[index]
 
@@ -223,7 +229,7 @@ class Node(Entity):
         if id not in self.results:
             return None
 
-        res = self.results[id]
+        res = self.results[id][0]
         del self.results[id]
         return res
 
@@ -232,10 +238,14 @@ class Node(Entity):
         meets_gpu_requirement = self.gpu_power > 0 or task.gpu_work == 0
         return meets_cpu_requirement and meets_gpu_requirement
 
+    def log_unretrieved_results(self) -> None:
+        for task_id in self.results.keys():
+            log_data("Wasted Compute Time", (task_id, self.results[task_id][1]))
+
 
 class Device(Entity):
     def __init__(
-        self, x: float, y: float, range: float, personal_node: Optional[Node] = None
+            self, x: float, y: float, range: float, personal_node: Optional[Node] = None
     ) -> None:
         super().__init__(x, y, range)
         self.tasks: Dict[UUID, Task] = {}
@@ -272,14 +282,14 @@ class Device(Entity):
 
                         assert res.id == task.id, "task ID mismatch"
                         got_result = True
-                        print(
-                            f"Got result in",
-                            cur_time - task.time_of_request,
-                            "ticks, result came from",
-                            "local node"
-                            if node is self.personal_node
-                            else "remote node",
-                        )
+
+                        log_data("End-To-End Task Completion Time", cur_time - task.time_of_request)
+                        if node is self.personal_node:
+                            log_data("Remote Completion", False)
+                        else:
+                            log_data("Remote Completion", True)
+
+
                         break
                 elif node.can_run(task):
                     eta = node.estimate_time(task)
@@ -301,7 +311,7 @@ class Device(Entity):
             del self.tasks[id]
 
     def request_task(
-        self, cpu_work: int, gpu_work: int, heartbeat_interval: int, cur_time: int
+            self, cpu_work: int, gpu_work: int, heartbeat_interval: int, cur_time: int
     ) -> None:
         task = Task(cpu_work, gpu_work, heartbeat_interval, cur_time)
         self.tasks[task.id] = task
@@ -345,9 +355,9 @@ class World:
         self.entities.append(entity)
 
     def neighbors_of(
-        self,
-        entity: Entity,
-        neighbor_type: Type[T],
+            self,
+            entity: Entity,
+            neighbor_type: Type[T],
     ) -> Set[T]:
         neighbors: Set[T] = set()
         for potential_neighbor in self.entities:
@@ -430,28 +440,31 @@ class TestingProfile:
     duration: int
 
 
-INITIAL_TESTING_PROFILE = TestingProfile(
-    gen_space=Rect(-50, 50, -50, 50),
-    node_count=10,
-    node_range=lambda *_: random.uniform(1.0, 15.0),
-    node_cpu_power=lambda *_: random.randrange(1, 10),
-    node_gpu_power=lambda *_: random.randrange(0, 5),
-    device_count=5,
-    device_range=lambda *_: random.uniform(10.0, 25.0),
-    device_personal_node_rate=0.00005,
-    device_personal_node_power_multiplier=0.25,
-    task_cpu_work=lambda *_: random.randrange(10, 100),
-    # 25% of tasks involve a GPU workload
-    task_gpu_work=lambda *_: random.randrange(5, 30)
-    if random.randrange(0, 4) == 0
-    else 0,
-    task_heartbeat_interval=lambda *_: 5,
-    # every tick, for every device, 10% chance of spawning a task
-    task_request_chance=0.1,
-    duration=100000,
-    movement_direction_variation=lambda *_: random.gauss(0, 0.05),  # radians
-    movement_magnitude_variation=lambda *_: random.gauss(0, 0.1),
-)
+def create_testing_profile(num_entities: int, average_entity_range: float, average_node_power: int, task_spawn_chance: float) -> TestingProfile:
+    return TestingProfile(
+        gen_space=Rect(-50, 50, -50, 50),
+        node_count=math.floor(num_entities / 2),
+        node_range=lambda *_: max(average_entity_range * random.gauss(1, 0.3), 0),
+        node_cpu_power=lambda *_: math.ceil(max(average_node_power * random.gauss(1, 0.3), 0)),
+        node_gpu_power=lambda *_: math.ceil(max(average_node_power * random.gauss(1, 0.3), 0))
+        if random.randrange(0, 2) == 0
+        else 0,
+        device_count=math.floor(num_entities / 2),
+        device_range=lambda *_: max(average_entity_range * random.gauss(1, 0.3), 0),
+        device_personal_node_rate=0.00005,
+        device_personal_node_power_multiplier=0.25,
+        task_cpu_work=lambda *_: random.randrange(1000, 10000),
+        # 25% of tasks involve a GPU workload
+        task_gpu_work=lambda *_: random.randrange(1000, 10000)
+        if random.randrange(0, 4) == 0
+        else 0,
+        task_heartbeat_interval=lambda *_: 5,
+        # every tick, for every device, 10% chance of spawning a task
+        task_request_chance=task_spawn_chance,
+        duration=1000,
+        movement_direction_variation=lambda *_: random.gauss(0, 0.05),  # radians
+        movement_magnitude_variation=lambda *_: random.gauss(0, 0.1),
+    )
 
 
 def simulate(p: TestingProfile) -> None:
@@ -509,7 +522,12 @@ def simulate(p: TestingProfile) -> None:
 
 
 def main() -> None:
+
     simulate(INITIAL_TESTING_PROFILE)
+
+    f = open("")
+
+
 
 
 if __name__ == "__main__":
