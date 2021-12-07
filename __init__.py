@@ -17,7 +17,12 @@ MAGNITUDE_CHANGE_VARIATION = 1
 MAXIMUM_MAGNITUDE = 10
 
 TESTING = False
-NUM_NODES_MU
+NUM_NODES_VAR = 1
+NODE_RANGE_VAR = 1
+NODE_POWER_VAR = 1
+TASK_SIZE_VAR = 1
+
+
 
 T = TypeVar("T")
 
@@ -32,15 +37,15 @@ def random_color() -> str:
 class RunningTask:
     def __init__(
         self,
-        budget: int,
+        time_budget: int,
         cpu_work: int,
         gpu_work: int,
         task_id: UUID,
         runner_id: UUID,
         heartbeat_time: int,
     ) -> None:
-        self.budget = budget
-        self.progress = 0
+        self.time_budget = time_budget
+        self.time_spent = 0
         self.cpu_work_left = cpu_work
         self.gpu_work_left = gpu_work
         self.id = task_id
@@ -63,12 +68,12 @@ class RunningTask:
         self.heartbeat_timer = self.heartbeat_time
 
     def work(self, cpu_power: int, gpu_power: int) -> None:
-        assert self.budget > 0
+        self.time_spent += 1
         self.cpu_work_left -= cpu_power * random.gauss(1, PERFORMANCE_VARIATION)
         self.gpu_work_left -= gpu_power * random.gauss(1, PERFORMANCE_VARIATION)
 
     def remaining_budget(self) -> int:
-        return self.budget - self.progress
+        return self.time_budget - self.time_spent
 
 
 class Task:
@@ -79,7 +84,7 @@ class Task:
         self.id = uuid4()
         self.runners: Dict[UUID, int] = {}
 
-    def run(self, runner_id: UUID, cpu_power: int, gpu_power: int) -> RunningTask:
+    def run(self, runner_id: UUID, cpu_power: int, gpu_power: int, is_own_node: bool) -> RunningTask:
         budget = math.ceil(max(self.cpu_work / cpu_power, self.gpu_work / gpu_power))
         return RunningTask(
             math.ceil(budget * EXTRA_BUDGET_CONSIDERATION_FACTOR), self.cpu_work, self.gpu_work, self.id, runner_id, self.heartbeat_time
