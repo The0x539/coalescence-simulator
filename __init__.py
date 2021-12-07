@@ -23,7 +23,6 @@ NODE_POWER_VAR = 1
 TASK_SIZE_VAR = 1
 
 
-
 T = TypeVar("T")
 
 
@@ -43,7 +42,7 @@ class RunningTask:
         task_id: UUID,
         runner_id: UUID,
         heartbeat_time: int,
-        running_on_own_node: bool
+        running_on_own_node: bool,
     ) -> None:
         self.time_budget = time_budget
         self.time_spent = 0
@@ -88,11 +87,18 @@ class Task:
         self.id = uuid4()
         self.runners: Dict[UUID, int] = {}
 
-    def run(self, runner_id: UUID, cpu_power: int, gpu_power: int, running_on_own_node: bool) -> RunningTask:
+    def run(
+        self, runner_id: UUID, cpu_power: int, gpu_power: int, running_on_own_node: bool
+    ) -> RunningTask:
         budget = math.ceil(max(self.cpu_work / cpu_power, self.gpu_work / gpu_power))
         return RunningTask(
             math.ceil(budget * EXTRA_BUDGET_CONSIDERATION_FACTOR),
-                self.cpu_work, self.gpu_work, self.id, runner_id, self.heartbeat_time, running_on_own_node
+            self.cpu_work,
+            self.gpu_work,
+            self.id,
+            runner_id,
+            self.heartbeat_time,
+            running_on_own_node,
         )
 
 
@@ -247,7 +253,9 @@ class Device(Entity):
             elif best_neighbor_for_task is not None:
                 best_neighbor_for_task.spawn(task)
 
-    def request_task(self, cpu_budget: int, gpu_budget: int, heartbeat_time: int) -> None:
+    def request_task(
+        self, cpu_budget: int, gpu_budget: int, heartbeat_time: int
+    ) -> None:
         task = Task(cpu_budget, gpu_budget, heartbeat_time)
         self.tasks[task.id] = task
         if self.personal_node is not None and self.personal_node.can_run(task):
@@ -271,7 +279,6 @@ class Device(Entity):
         if self.v_mag > MAXIMUM_MAGNITUDE:
             assert self.v_mag - MAXIMUM_MAGNITUDE <= MAXIMUM_MAGNITUDE
             self.v_mag = 2 * MAXIMUM_MAGNITUDE - self.v_mag
-
 
 
 class World:
@@ -384,8 +391,10 @@ def main() -> None:
                 last_velocity_time = t
                 for e in w.entities:
                     if isinstance(e, Device):
-                        e.change_velocity(random.gauss(0, ANGLE_CHANGE_VARIATION),
-                                          random.gauss(0, MAGNITUDE_CHANGE_VARIATION))
+                        e.change_velocity(
+                            random.gauss(0, ANGLE_CHANGE_VARIATION),
+                            random.gauss(0, MAGNITUDE_CHANGE_VARIATION),
+                        )
 
             w.tick()
             w.plot(ax)
