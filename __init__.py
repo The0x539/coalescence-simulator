@@ -1,10 +1,11 @@
 from uuid import UUID, uuid4
 import math
-from typing import List, Set, Optional, Dict, TypeVar, Type
+from typing import List, Set, Optional, Dict, TypeVar, Type, Callable
 from abc import ABC, abstractmethod
 import random
 import matplotlib.pyplot as plt
 import time
+from dataclasses import dataclass
 
 FPS: int = 8
 SECONDS_BETWEEN_VELOCITY_UPDATES: int = 1
@@ -16,7 +17,6 @@ ANGLE_CHANGE_VARIATION = 5
 MAGNITUDE_CHANGE_VARIATION = 1
 MAXIMUM_MAGNITUDE = 10
 
-TESTING = False
 NUM_NODES_VAR = 1
 NODE_RANGE_VAR = 1
 NODE_POWER_VAR = 1
@@ -68,7 +68,7 @@ class RunningTask:
     def refresh_heartbeat(self) -> None:
         self.heartbeat_timer = self.heartbeat_time
 
-    def work(self, cpu_power: int, gpu_power: int) -> None:
+    def work(self, cpu_power: float, gpu_power: float) -> None:
         self.time_spent += 1
         self.cpu_work_left -= cpu_power * random.gauss(1, PERFORMANCE_VARIATION)
         self.gpu_work_left -= gpu_power * random.gauss(1, PERFORMANCE_VARIATION)
@@ -96,7 +96,7 @@ class Task:
         self.time_of_request = cur_time
 
     def run(
-        self, runner_id: UUID, cpu_power: int, gpu_power: int, is_local: bool
+        self, runner_id: UUID, cpu_power: float, gpu_power: float, is_local: bool
     ) -> RunningTask:
         estimate = max(self.cpu_work / cpu_power, self.gpu_work / gpu_power)
         budget = math.ceil(estimate * EXTRA_BUDGET_CONSIDERATION_FACTOR)
@@ -132,7 +132,7 @@ class Entity(ABC):
 
 class Node(Entity):
     def __init__(
-        self, x: float, y: float, cpu_power: int, gpu_power: int, range: float
+        self, x: float, y: float, cpu_power: float, gpu_power: float, range: float
     ) -> None:
         super().__init__(x, y, range)
         self.cpu_power = cpu_power
@@ -220,6 +220,9 @@ class Device(Entity):
     ) -> None:
         super().__init__(x, y, range)
         self.tasks: Dict[UUID, Task] = {}
+        if personal_node is not None:
+            personal_node.x = self.x
+            personal_node.y = self.y
         self.personal_node = personal_node
         self.v_ang = 0.0
         self.v_mag = 0.0
@@ -363,56 +366,116 @@ class World:
                 print(f"entity @ ({e.x} {e.y})")
 
 
-def main() -> None:
+@dataclass
+class Rect:
+    x0: int
+    x1: int
+    y0: int
+    y1: int
+
+
+@dataclass
+class TestingProfile:
+    gen_space: Rect
+    node_count: int
+    node_range: Callable[["TestingProfile"], float]
+    node_cpu_power: Callable[["TestingProfile"], int]
+    node_gpu_power: Callable[["TestingProfile"], int]
+
+    device_count: int
+    device_range: Callable[["TestingProfile"], float]
+    device_personal_node_rate: float
+    device_personal_node_power_multiplier: float
+
+    task_cpu_work: Callable[["TestingProfile"], int]
+    task_gpu_work: Callable[["TestingProfile"], int]
+    task_heartbeat_interval: Callable[["TestingProfile"], int]
+
+    task_request_chance: float
+
+    movement_direction_variation: Callable[["TestingProfile"], float]
+    movement_magnitude_variation: Callable[["TestingProfile"], float]
+
+    duration: int
+
+
+INITIAL_TESTING_PROFILE = TestingProfile(
+    gen_space=Rect(-50, 50, -50, 50),
+    node_count=10,
+    node_range=lambda *_: random.uniform(1.0, 15.0),
+    node_cpu_power=lambda *_: random.randrange(1, 10),
+    node_gpu_power=lambda *_: random.randrange(0, 5),
+    device_count=5,
+    device_range=lambda *_: random.uniform(10.0, 25.0),
+    device_personal_node_rate=0.5,
+    device_personal_node_power_multiplier=0.25,
+    task_cpu_work=lambda *_: random.randrange(100, 1000),
+    # 25% of tasks involve a GPU workload
+    task_gpu_work=lambda *_: random.randrange(50, 300),
+    task_heartbeat_interval=lambda *_: 5 if random.randrange(0, 4) == 0 else 0,
+    # every tick, for every device, 10% chance of spawning a task
+    task_request_chance=0.1,
+    duration=1000,
+    movement_direction_variation=lambda *_: random.gauss(0, 0.05),  # radians
+    movement_magnitude_variation=lambda *_: random.gauss(0, 0.1),
+)
+
+
+def simulate(p: TestingProfile) -> None:
     w = World()
-    for _ in range(10):
+    for _ in range(p.node_count):
         n = Node(
-            random.randrange(-50, 50),
-            random.randrange(-50, 50),
-            random.randrange(1, 10),
-            random.randrange(0, 5),
-            random.uniform(1.0, 15.0),
+            x=random.randrange(p.gen_space.x0, p.gen_space.x1),
+            y=random.randrange(p.gen_space.y0, p.gen_space.y1),
+            cpu_power=p.node_cpu_power(),
+            gpu_power=p.node_gpu_power(),
+            range=p.node_range(),
         )
         w.add_entity(n)
 
-    for _ in range(5):
+    for _ in range(p.device_count):
+        device_range = p.device_range()
+
+        personal_node = None
+        if random.random() < p.device_personal_node_rate:
+            personal_node = Node(
+                x=random.randrange(p.gen_space.x0, p.gen_space.x1),
+                y=random.randrange(p.gen_space.y0, p.gen_space.y1),
+                cpu_power=p.device_personal_node_power_multiplier * p.node_cpu_power(),
+                gpu_power=p.device_personal_node_power_multiplier * p.node_gpu_power(),
+                range=device_range,
+            )
+
         d = Device(
-            random.randrange(-50, 50),
-            random.randrange(-50, 50),
-            random.uniform(10.0, 25.0),
+            x=random.randrange(p.gen_space.x0, p.gen_space.x1),
+            y=random.randrange(p.gen_space.y0, p.gen_space.y1),
+            range=device_range,
+            personal_node=personal_node,
         )
         w.add_entity(d)
 
-    # plt.ion()
-    # fig = plt.figure()
-    # ax = fig.add_subplot(111)
-    # w.plot(ax)
+    for _ in range(p.duration):
+        for e in w.entities:
+            if isinstance(e, Device):
+                e.change_velocity(
+                    angle=p.movement_direction_variation(),
+                    magnitude=p.movement_magnitude_variation(),
+                )
+                e.move()
+                if random.random() < p.task_request_chance:
+                    t = Task(
+                        cpu_work=p.task_cpu_work(),
+                        gpu_work=p.task_gpu_work(),
+                        heartbeat_time=p.task_heartbeat_interval(),
+                        cur_time=w.clock,
+                    )
+        w.tick()
 
-    last_frame_time = 0.0
-    last_velocity_time = 0.0
+    print("Done simulating!")
 
-    # while True:
-    #    t = time.time()
-    #    if t - last_frame_time > 1 / FPS:
-    #        last_frame_time = t
-    #        fig.canvas.draw()
-    #        fig.canvas.flush_events()
 
-    #        for e in w.entities:
-    #            if isinstance(e, Device):
-    #                e.move()
-
-    #        if t - last_velocity_time > SECONDS_BETWEEN_VELOCITY_UPDATES:
-    #            last_velocity_time = t
-    #            for e in w.entities:
-    #                if isinstance(e, Device):
-    #                    e.change_velocity(
-    #                        random.gauss(0, ANGLE_CHANGE_VARIATION),
-    #                        random.gauss(0, MAGNITUDE_CHANGE_VARIATION),
-    #                    )
-
-    #        w.tick()
-    #        w.plot(ax)
+def main() -> None:
+    simulate(INITIAL_TESTING_PROFILE)
 
 
 if __name__ == "__main__":
