@@ -364,7 +364,8 @@ def main() -> None:
                 last_velocity_time = t
                 for e in w.entities:
                     if isinstance(e, Device):
-                        e.update_velocity(random.randrange(-5, 5), random.randrange(-5, 5))
+                        e.change_velocity(random.gauss(0, ANGLE_CHANGE_VARIATION),
+                                          random.gauss(0, MAGNITUDE_CHANGE_VARIATION))
 
             w.tick()
             w.plot(ax)
