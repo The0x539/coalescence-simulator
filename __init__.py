@@ -45,14 +45,14 @@ def safe_div(num: Union[int, float], den: Union[int, float]) -> float:
 
 class RunningTask:
     def __init__(
-            self,
-            time_budget: int,
-            cpu_work: int,
-            gpu_work: int,
-            task_id: UUID,
-            runner_id: UUID,
-            heartbeat_time: int,
-            is_local: bool,
+        self,
+        time_budget: int,
+        cpu_work: int,
+        gpu_work: int,
+        task_id: UUID,
+        runner_id: UUID,
+        heartbeat_time: int,
+        is_local: bool,
     ) -> None:
         assert heartbeat_time > 0
 
@@ -84,7 +84,6 @@ class RunningTask:
         self.time_spent += 1
         self.cpu_work_left -= cpu_power * random.gauss(1, PERFORMANCE_VARIATION)
         self.gpu_work_left -= gpu_power * random.gauss(1, PERFORMANCE_VARIATION)
-        if self.is_complete():
 
     def has_exhausted_budget(self) -> bool:
         if self.is_local:
@@ -99,7 +98,7 @@ class RunningTask:
 
 class Task:
     def __init__(
-            self, cpu_work: int, gpu_work: int, heartbeat_time: int, cur_time: int
+        self, cpu_work: int, gpu_work: int, heartbeat_time: int, cur_time: int
     ) -> None:
         self.cpu_work = cpu_work
         self.gpu_work = gpu_work
@@ -109,7 +108,7 @@ class Task:
         self.time_of_request = cur_time
 
     def run(
-            self, runner_id: UUID, cpu_power: float, gpu_power: float, is_local: bool
+        self, runner_id: UUID, cpu_power: float, gpu_power: float, is_local: bool
     ) -> RunningTask:
         estimate = max(
             safe_div(self.cpu_work, cpu_power), safe_div(self.gpu_work, gpu_power)
@@ -147,7 +146,7 @@ class Entity(ABC):
 
 class Node(Entity):
     def __init__(
-            self, x: float, y: float, cpu_power: float, gpu_power: float, range: float
+        self, x: float, y: float, cpu_power: float, gpu_power: float, range: float
     ) -> None:
         super().__init__(x, y, range)
         self.cpu_power = cpu_power
@@ -245,7 +244,7 @@ class Node(Entity):
 
 class Device(Entity):
     def __init__(
-            self, x: float, y: float, range: float, personal_node: Optional[Node] = None
+        self, x: float, y: float, range: float, personal_node: Optional[Node] = None
     ) -> None:
         super().__init__(x, y, range)
         self.tasks: Dict[UUID, Task] = {}
@@ -283,12 +282,14 @@ class Device(Entity):
                         assert res.id == task.id, "task ID mismatch"
                         got_result = True
 
-                        log_data("End-To-End Task Completion Time", cur_time - task.time_of_request)
+                        log_data(
+                            "End-To-End Task Completion Time",
+                            cur_time - task.time_of_request,
+                        )
                         if node is self.personal_node:
                             log_data("Remote Completion", False)
                         else:
                             log_data("Remote Completion", True)
-
 
                         break
                 elif node.can_run(task):
@@ -311,7 +312,7 @@ class Device(Entity):
             del self.tasks[id]
 
     def request_task(
-            self, cpu_work: int, gpu_work: int, heartbeat_interval: int, cur_time: int
+        self, cpu_work: int, gpu_work: int, heartbeat_interval: int, cur_time: int
     ) -> None:
         task = Task(cpu_work, gpu_work, heartbeat_interval, cur_time)
         self.tasks[task.id] = task
@@ -355,9 +356,9 @@ class World:
         self.entities.append(entity)
 
     def neighbors_of(
-            self,
-            entity: Entity,
-            neighbor_type: Type[T],
+        self,
+        entity: Entity,
+        neighbor_type: Type[T],
     ) -> Set[T]:
         neighbors: Set[T] = set()
         for potential_neighbor in self.entities:
@@ -440,13 +441,22 @@ class TestingProfile:
     duration: int
 
 
-def create_testing_profile(num_entities: int, average_entity_range: float, average_node_power: int, task_spawn_chance: float) -> TestingProfile:
+def create_testing_profile(
+    num_entities: int,
+    average_entity_range: float,
+    average_node_power: int,
+    task_spawn_chance: float,
+) -> TestingProfile:
     return TestingProfile(
         gen_space=Rect(-50, 50, -50, 50),
         node_count=math.floor(num_entities / 2),
         node_range=lambda *_: max(average_entity_range * random.gauss(1, 0.3), 0),
-        node_cpu_power=lambda *_: math.ceil(max(average_node_power * random.gauss(1, 0.3), 0)),
-        node_gpu_power=lambda *_: math.ceil(max(average_node_power * random.gauss(1, 0.3), 0))
+        node_cpu_power=lambda *_: math.ceil(
+            max(average_node_power * random.gauss(1, 0.3), 0)
+        ),
+        node_gpu_power=lambda *_: math.ceil(
+            max(average_node_power * random.gauss(1, 0.3), 0)
+        )
         if random.randrange(0, 2) == 0
         else 0,
         device_count=math.floor(num_entities / 2),
@@ -526,8 +536,6 @@ def main() -> None:
     simulate(INITIAL_TESTING_PROFILE)
 
     f = open("")
-
-
 
 
 if __name__ == "__main__":
