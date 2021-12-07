@@ -85,12 +85,15 @@ class RunningTask:
 
 
 class Task:
-    def __init__(self, cpu_work: int, gpu_work: int, heartbeat_time: int) -> None:
+    def __init__(
+        self, cpu_work: int, gpu_work: int, heartbeat_time: int, cur_time: int
+    ) -> None:
         self.cpu_work = cpu_work
         self.gpu_work = gpu_work
         self.heartbeat_time = heartbeat_time
         self.id = uuid4()
         self.runners: Dict[UUID, int] = {}
+        self.time_of_request = cur_time
 
     def run(
         self, runner_id: UUID, cpu_power: int, gpu_power: int, is_local: bool
@@ -123,7 +126,7 @@ class Entity(ABC):
         self.id = uuid4()
 
     @abstractmethod
-    def tick(self, world: "World") -> None:
+    def tick(self, world: "World", cur_time: int) -> None:
         ...
 
 
@@ -138,7 +141,7 @@ class Node(Entity):
         self.results: Dict[UUID, Result] = {}
         self.time_left = 0
 
-    def tick(self, world: "World") -> None:
+    def tick(self, world: "World", cur_time: int) -> None:
         try:
             cur_task = self.tasks[0]
         except IndexError:
@@ -221,7 +224,7 @@ class Device(Entity):
         self.v_ang = 0.0
         self.v_mag = 0.0
 
-    def tick(self, world: "World") -> None:
+    def tick(self, world: "World", cur_time: int) -> None:
 
         nearby_nodes = world.neighbors_of(self, Node)
 
@@ -245,6 +248,7 @@ class Device(Entity):
 
                         assert res.id == task.id, "task ID mismatch"
                         got_result = True
+                        print(f"Got result in {cur_time - task.time_of_request} ticks")
                         break
                 elif node.can_run(task):
                     eta = node.estimate_time(task)
@@ -263,9 +267,9 @@ class Device(Entity):
                 best_neighbor_for_task.spawn(task, False)
 
     def request_task(
-        self, cpu_budget: int, gpu_budget: int, heartbeat_time: int
+        self, cpu_budget: int, gpu_budget: int, heartbeat_time: int, cur_time: int
     ) -> None:
-        task = Task(cpu_budget, gpu_budget, heartbeat_time)
+        task = Task(cpu_budget, gpu_budget, heartbeat_time, cur_time)
         self.tasks[task.id] = task
         if self.personal_node is not None and self.personal_node.can_run(task):
             self.personal_node.spawn(task, True)
@@ -293,10 +297,12 @@ class Device(Entity):
 class World:
     def __init__(self) -> None:
         self.entities: List[Entity] = []
+        self.clock = 0
 
     def tick(self) -> None:
         for entity in self.entities:
-            entity.tick(self)
+            entity.tick(self, self.clock)
+        self.clock += 1
 
     def add_entity(self, entity: Entity) -> None:
         for e in self.entities:
