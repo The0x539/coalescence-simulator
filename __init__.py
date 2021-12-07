@@ -204,7 +204,7 @@ class Node(Entity):
 
     def spawn(self, task: Task, is_local: bool) -> None:
         if self.id in task.runners:
-            #
+            # don't spawn a task if an instance of it is already running on this node
             return
         self.tasks.append(task.run(self.id, self.cpu_power, self.gpu_power, is_local))
         self.time_left = self.estimate_time(task)
