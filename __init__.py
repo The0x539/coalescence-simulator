@@ -84,7 +84,6 @@ class RunningTask:
         self.time_spent += 1
         self.cpu_work_left -= cpu_power * random.gauss(1, PERFORMANCE_VARIATION)
         self.gpu_work_left -= gpu_power * random.gauss(1, PERFORMANCE_VARIATION)
-        if self.is_complete():
 
     def has_exhausted_budget(self) -> bool:
         if self.is_local:
@@ -220,7 +219,7 @@ class Node(Entity):
             # ok dude, I wasn't running it anyway
             return
 
-        log_data("Wasted Compute Time", (task_id, running_task.time_spent))
+        log_data("Wasted Compute Time", running_task.time_spent)
 
         self.time_left -= running_task.remaining_budget()
         del self.tasks[index]
@@ -240,7 +239,7 @@ class Node(Entity):
 
     def log_unretrieved_results(self) -> None:
         for task_id in self.results.keys():
-            log_data("Wasted Compute Time", (task_id, self.results[task_id][1]))
+            log_data("Wasted Compute Time", self.results[task_id][1])
 
 
 class Device(Entity):
@@ -451,7 +450,7 @@ def create_testing_profile(num_entities: int, average_entity_range: float, avera
         else 0,
         device_count=math.floor(num_entities / 2),
         device_range=lambda *_: max(average_entity_range * random.gauss(1, 0.3), 0),
-        device_personal_node_rate=0.00005,
+        device_personal_node_rate=0.5,
         device_personal_node_power_multiplier=0.25,
         task_cpu_work=lambda *_: random.randrange(1000, 10000),
         # 25% of tasks involve a GPU workload
@@ -522,12 +521,43 @@ def simulate(p: TestingProfile) -> None:
 
 
 def main() -> None:
+    base_num_entities = 20
+    base_entity_range = 20
+    base_node_power = 200
+    base_task_spawn_chance = 0.1
 
-    simulate(INITIAL_TESTING_PROFILE)
+    e = open("EndToEnd.csv", "w")
+    p = open("RemotePercent.csv", "w")
+    w = open("WastedTime.csv", "w")
 
-    f = open("")
+    eL = []
+    pL = []
+    wL = []
 
+    for num_entities in [5, 10, 15, 20, 25, 30]:
+        for _ in range(0, 5):
+            simulate(create_testing_profile(base_num_entities, num_entities, base_node_power, base_task_spawn_chance))
 
+            end = logged_data["End-To-End Task Completion Time"]
+            remote = logged_data["Remote Completion"]
+            wasted = logged_data["Wasted Compute Time"]
+
+            count = 0
+            for b in remote:
+                if b:
+                    count += 1
+
+            eL.append(sum(end) / len(end))
+            pL.append(count / len(remote))
+            wL.append(sum(wasted) / len(wasted))
+
+        e.write(str(sum(eL) / len(eL)) + "\n")
+        p.write(str(sum(pL) / len(pL)) + "\n")
+        w.write(str(sum(wL) / len(wL)) + "\n")
+
+    e.close()
+    p.close()
+    w.close()
 
 
 if __name__ == "__main__":
